@@ -11,7 +11,7 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 
-  <title>UCB Eyes Live</title>
+  <title>UCB Eyes Live · 1 FPS</title>
 
   <style>
     :root {
@@ -22,6 +22,7 @@
       --text: #f5f7fa;
       --muted: #8d96a3;
       --live: #45d483;
+      --warning: #ff9f43;
       --waiting: #f6bf52;
       --error: #ff6f6f;
       --shadow: 0 22px 70px rgba(0, 0, 0, 0.52);
@@ -96,18 +97,16 @@
       height: 100%;
       object-fit: contain;
       background: #020304;
-      opacity: 0;
-      transform: scale(1.006);
-      transition:
-        opacity 0.22s ease,
-        transform 0.35s ease;
+      opacity: 1;
+      transform: none;
+      transition: none;
       user-select: none;
       -webkit-user-drag: none;
     }
 
     .live-frame.visible {
       opacity: 1;
-      transform: scale(1);
+      transform: none;
     }
 
     .ambient {
@@ -118,14 +117,14 @@
       height: 116%;
       object-fit: cover;
       filter: blur(42px) saturate(0.72) brightness(0.34);
-      opacity: 0;
+      opacity: 0.58;
       transform: scale(1.08);
-      transition: opacity 0.35s ease;
+      transition: none;
       pointer-events: none;
     }
 
     .ambient.visible {
-      opacity: 0.72;
+      opacity: 0.58;
     }
 
     .placeholder {
@@ -234,6 +233,13 @@
         0 0 18px rgba(69, 212, 131, 0.42);
     }
 
+    .status-dot.warning {
+      background: var(--warning);
+      box-shadow:
+        0 0 0 4px rgba(255, 159, 67, 0.14),
+        0 0 16px rgba(255, 159, 67, 0.30);
+    }
+
     .status-dot.error {
       background: var(--error);
       box-shadow: 0 0 0 4px rgba(255, 111, 111, 0.12);
@@ -326,7 +332,24 @@
       -webkit-backdrop-filter: blur(18px);
       transition:
         opacity 0.22s ease,
-        transform 0.22s ease;
+        transform 0.22s ease,
+        color 0.18s ease,
+        border-color 0.18s ease;
+    }
+
+    .bottom-status.live {
+      color: #cfead9;
+      border-color: rgba(69, 212, 131, 0.24);
+    }
+
+    .bottom-status.warning {
+      color: #ffd4a7;
+      border-color: rgba(255, 159, 67, 0.32);
+    }
+
+    .bottom-status.error {
+      color: #ffb1ad;
+      border-color: rgba(255, 111, 111, 0.34);
     }
 
     .loading-line {
@@ -514,7 +537,7 @@
         <span class="status-dot" id="statusDot" aria-hidden="true"></span>
 
         <div class="identity-copy">
-          <strong>UCB Eyes Live</strong>
+          <strong>UCB Eyes Live · 1 FPS</strong>
           <span id="connectionLabel">Connecting anonymously</span>
         </div>
       </div>
@@ -566,7 +589,7 @@
     </header>
 
     <div class="bottom-status" id="bottomStatus">
-      Waiting for the first frame
+      Waiting for the 1 FPS feed
     </div>
 
     <div class="toast" id="toast" role="status"></div>
@@ -636,6 +659,8 @@
 
       if (state === "live") {
         statusDot.classList.add("live");
+      } else if (state === "warning") {
+        statusDot.classList.add("warning");
       } else if (state === "error") {
         statusDot.classList.add("error");
       }
@@ -684,24 +709,34 @@
         Math.floor((Date.now() - milliseconds) / 1000)
       );
 
-      if (seconds < 2) return "Live · updated just now";
-      if (seconds < 60) return `Live · updated ${seconds}s ago`;
+      if (seconds < 2) return "Live · 1 FPS";
+      if (seconds < 60) return `Live · ${seconds}s behind`;
 
       const minutes = Math.floor(seconds / 60);
       return `Last frame ${minutes}m ago`;
     }
 
     function updateFrameAge() {
-      bottomStatus.textContent = ageLabel(latestUpdatedAt);
+      if (!latestUpdatedAt) {
+        setBottomStatus("warning", "Waiting for the 1 FPS feed");
+        return;
+      }
 
-      if (!latestUpdatedAt) return;
-
+      const ageText = ageLabel(latestUpdatedAt);
       const age = Date.now() - latestUpdatedAt;
 
-      if (age > 20000) {
-        setConnection("waiting", "Connected · frame is stale");
+      if (age > 15000) {
+        setConnection("error", "Disconnected · no recent frame");
+        setBottomStatus("error", ageText);
+      } else if (age > 5000) {
+        setConnection("warning", "Interrupted · no new frame");
+        setBottomStatus("warning", ageText);
       } else if (liveFrame.classList.contains("visible")) {
-        setConnection("live", "Connected · live");
+        setConnection("live", "Connected · 1 FPS");
+        setBottomStatus("live", ageText);
+      } else {
+        setConnection("warning", "Waiting for frame");
+        setBottomStatus("warning", ageText);
       }
     }
 
@@ -793,27 +828,20 @@
         const preload = new Image();
 
         preload.onload = () => {
-          liveFrame.classList.remove("visible");
-          ambientImage.classList.remove("visible");
+          liveFrame.src = dataUrl;
+          ambientImage.src = dataUrl;
 
-          requestAnimationFrame(() => {
-            liveFrame.src = dataUrl;
-            ambientImage.src = dataUrl;
+          liveFrame.classList.add("visible");
+          ambientImage.classList.add("visible");
+          setPlaceholder("", "", false);
 
-            requestAnimationFrame(() => {
-              liveFrame.classList.add("visible");
-              ambientImage.classList.add("visible");
-              setPlaceholder("", "", false);
+          latestUpdatedAt =
+            timestampToMillis(metadata.updatedAt) ||
+            Date.now();
 
-              latestUpdatedAt =
-                timestampToMillis(metadata.updatedAt) ||
-                Date.now();
-
-              setConnection("live", "Connected · live");
-              updateFrameAge();
-              resolve();
-            });
-          });
+          setConnection("live", "Connected · 1 FPS");
+          updateFrameAge();
+          resolve();
         };
 
         preload.onerror = () => {
@@ -841,7 +869,7 @@
         currentRef,
         { includeMetadataChanges: true },
         snapshot => {
-          setConnection("waiting", "Connected · checking frame");
+          setConnection("warning", "Connected · checking frame");
 
           if (!snapshot.exists()) {
             latestMetadata = null;
@@ -852,7 +880,7 @@
               "Start the UCB Eyes capture HTA to publish the first frame."
             );
 
-            bottomStatus.textContent = "Waiting for the first frame";
+            setBottomStatus("warning", "Waiting for the 1 FPS feed");
             return;
           }
 
@@ -872,6 +900,11 @@
           setPlaceholder(
             "Connection lost",
             "The live viewer will continue trying to reconnect."
+          );
+
+          setBottomStatus(
+            "error",
+            "Disconnected · Firestore connection lost"
           );
 
           toast("Firestore connection lost.", true);
@@ -900,7 +933,8 @@
       onAuthStateChanged(auth, user => {
         if (!user) return;
 
-        setConnection("waiting", "Connected · waiting for frame");
+        setConnection("warning", "Connected · waiting for frame");
+        setBottomStatus("warning", "Waiting for the 1 FPS feed");
         startFrameListener();
       });
     }
@@ -1088,6 +1122,7 @@
 
     window.addEventListener("offline", () => {
       setConnection("error", "Offline");
+      setBottomStatus("error", "Disconnected · this device is offline");
       toast("This device is offline.", true);
     });
 
