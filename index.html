@@ -7,29 +7,21 @@
     content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no"
   >
   <meta name="color-scheme" content="dark">
-  <meta name="theme-color" content="#07090c">
+  <meta name="theme-color" content="#020304">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-
-  <title>UCB Eyes Live · 1 FPS</title>
+  <title>UCB Eyes Live</title>
 
   <style>
     :root {
-      --bg: #07090c;
-      --surface: rgba(17, 21, 27, 0.78);
-      --surface-strong: rgba(20, 25, 32, 0.94);
-      --border: rgba(255, 255, 255, 0.09);
-      --text: #f5f7fa;
-      --muted: #8d96a3;
       --live: #45d483;
       --warning: #ff9f43;
-      --waiting: #f6bf52;
       --error: #ff6f6f;
-      --shadow: 0 22px 70px rgba(0, 0, 0, 0.52);
-      --safe-top: max(14px, env(safe-area-inset-top));
-      --safe-right: max(14px, env(safe-area-inset-right));
-      --safe-bottom: max(14px, env(safe-area-inset-bottom));
-      --safe-left: max(14px, env(safe-area-inset-left));
+      --muted: #a5adb7;
+      --safe-top: max(12px, env(safe-area-inset-top));
+      --safe-right: max(12px, env(safe-area-inset-right));
+      --safe-bottom: max(12px, env(safe-area-inset-bottom));
+      --safe-left: max(12px, env(safe-area-inset-left));
     }
 
     * {
@@ -42,11 +34,9 @@
       height: 100%;
       margin: 0;
       overflow: hidden;
-      background: var(--bg);
-      color: var(--text);
+      background: #020304;
+      color: #f5f7fa;
       font-family:
-        Inter,
-        ui-sans-serif,
         -apple-system,
         BlinkMacSystemFont,
         "Segoe UI",
@@ -57,302 +47,187 @@
 
     button {
       font: inherit;
-      color: inherit;
       -webkit-tap-highlight-color: transparent;
     }
 
-    .app-shell {
+    .app {
       position: fixed;
       inset: 0;
       overflow: hidden;
-      background:
-        radial-gradient(
-          1100px 680px at 50% -260px,
-          rgba(75, 91, 111, 0.18),
-          transparent 70%
-        ),
-        var(--bg);
+      background: #020304;
     }
 
-    .viewer {
+    .stage {
       position: absolute;
       inset: 0;
       display: grid;
       place-items: center;
       overflow: hidden;
       background: #020304;
-    }
-
-    .frame-stage {
-      position: absolute;
-      inset: 0;
-      display: grid;
-      place-items: center;
-      overflow: hidden;
-    }
-
-    .live-frame {
-      display: block;
-      width: 100%;
-      height: 100%;
-      object-fit: contain;
-      background: #020304;
-      opacity: 1;
-      transform: none;
-      transition: none;
-      user-select: none;
-      -webkit-user-drag: none;
-    }
-
-    .live-frame.visible {
-      opacity: 1;
-      transform: none;
     }
 
     .ambient {
       position: absolute;
       inset: -8%;
-      z-index: -1;
+      z-index: 0;
       width: 116%;
       height: 116%;
       object-fit: cover;
-      filter: blur(42px) saturate(0.72) brightness(0.34);
-      opacity: 0.58;
+      filter: blur(44px) saturate(0.65) brightness(0.28);
+      opacity: 0;
       transform: scale(1.08);
-      transition: none;
       pointer-events: none;
     }
 
     .ambient.visible {
-      opacity: 0.58;
+      opacity: 0.62;
+    }
+
+    .frame {
+      position: relative;
+      z-index: 1;
+      display: block;
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      background: transparent;
+      opacity: 0;
+      user-select: none;
+      -webkit-user-drag: none;
+    }
+
+    .frame.visible {
+      opacity: 1;
     }
 
     .placeholder {
       position: relative;
-      z-index: 2;
-      width: min(430px, calc(100% - 44px));
-      padding: 30px 28px;
-      border: 1px solid var(--border);
-      border-radius: 24px;
-      background: rgba(13, 17, 22, 0.82);
-      box-shadow: var(--shadow);
+      z-index: 3;
+      width: min(390px, calc(100% - 44px));
+      padding: 24px;
       text-align: center;
-      backdrop-filter: blur(18px);
-      -webkit-backdrop-filter: blur(18px);
-      transition:
-        opacity 0.22s ease,
-        transform 0.22s ease;
+      transition: opacity 0.18s ease;
     }
 
     .placeholder.hidden {
       opacity: 0;
-      transform: scale(0.98);
       pointer-events: none;
     }
 
     .placeholder-mark {
-      width: 54px;
-      height: 54px;
-      margin: 0 auto 17px;
+      width: 42px;
+      height: 42px;
+      margin: 0 auto 14px;
       display: grid;
       place-items: center;
-      border: 1px solid rgba(255, 255, 255, 0.1);
-      border-radius: 18px;
-      background: linear-gradient(145deg, #222a34, #131820);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      border-radius: 14px;
+      background: rgba(255, 255, 255, 0.045);
       color: #dce3ea;
-      box-shadow: inset 0 1px rgba(255, 255, 255, 0.06);
     }
 
     .placeholder-mark svg {
-      width: 25px;
-      height: 25px;
+      width: 21px;
+      height: 21px;
     }
 
     .placeholder h1 {
       margin: 0;
-      font-size: 20px;
-      font-weight: 690;
-      letter-spacing: -0.025em;
+      font-size: 18px;
+      font-weight: 680;
+      letter-spacing: -0.02em;
     }
 
     .placeholder p {
-      margin: 9px auto 0;
-      color: var(--muted);
-      font-size: 13px;
-      line-height: 1.55;
+      margin: 8px 0 0;
+      color: #8d96a3;
+      font-size: 12px;
+      line-height: 1.5;
     }
 
-    .topbar {
+    .status {
       position: absolute;
-      inset:
-        var(--safe-top)
-        var(--safe-right)
-        auto
-        var(--safe-left);
+      left: var(--safe-left);
+      bottom: var(--safe-bottom);
       z-index: 20;
-      min-height: 54px;
-      padding: 8px 9px 8px 13px;
       display: flex;
       align-items: center;
-      justify-content: space-between;
-      gap: 12px;
-      border: 1px solid var(--border);
-      border-radius: 18px;
-      background: var(--surface);
-      box-shadow: var(--shadow);
-      backdrop-filter: blur(20px) saturate(135%);
-      -webkit-backdrop-filter: blur(20px) saturate(135%);
-      transition:
-        opacity 0.22s ease,
-        transform 0.22s ease;
-    }
-
-    .identity {
-      min-width: 0;
-      display: flex;
-      align-items: center;
-      gap: 11px;
+      gap: 8px;
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 650;
+      line-height: 1;
+      text-shadow: 0 1px 6px #000;
+      transition: color 0.18s ease, opacity 0.18s ease;
     }
 
     .status-dot {
-      width: 9px;
-      height: 9px;
+      width: 8px;
+      height: 8px;
       flex: 0 0 auto;
       border-radius: 50%;
-      background: var(--waiting);
-      box-shadow: 0 0 0 4px rgba(246, 191, 82, 0.11);
-      transition:
-        background 0.18s ease,
-        box-shadow 0.18s ease;
-    }
-
-    .status-dot.live {
-      background: var(--live);
-      box-shadow:
-        0 0 0 4px rgba(69, 212, 131, 0.12),
-        0 0 18px rgba(69, 212, 131, 0.42);
-    }
-
-    .status-dot.warning {
       background: var(--warning);
-      box-shadow:
-        0 0 0 4px rgba(255, 159, 67, 0.14),
-        0 0 16px rgba(255, 159, 67, 0.30);
+      box-shadow: 0 0 12px rgba(255, 159, 67, 0.45);
     }
 
-    .status-dot.error {
+    .status.live {
+      color: #d9f5e5;
+    }
+
+    .status.live .status-dot {
+      background: var(--live);
+      box-shadow: 0 0 12px rgba(69, 212, 131, 0.5);
+    }
+
+    .status.warning {
+      color: #ffd1a1;
+    }
+
+    .status.warning .status-dot {
+      background: var(--warning);
+      box-shadow: 0 0 12px rgba(255, 159, 67, 0.5);
+    }
+
+    .status.error {
+      color: #ffaaa7;
+    }
+
+    .status.error .status-dot {
       background: var(--error);
-      box-shadow: 0 0 0 4px rgba(255, 111, 111, 0.12);
+      box-shadow: 0 0 12px rgba(255, 111, 111, 0.55);
     }
 
-    .identity-copy {
-      min-width: 0;
-    }
-
-    .identity-copy strong {
-      display: block;
-      overflow: hidden;
-      color: var(--text);
-      font-size: 13px;
-      font-weight: 680;
-      line-height: 1.18;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-    }
-
-    .identity-copy span {
-      display: block;
-      margin-top: 4px;
-      overflow: hidden;
-      color: var(--muted);
-      font-size: 10.5px;
-      line-height: 1;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-    }
-
-    .controls {
-      flex: 0 0 auto;
-      display: flex;
-      align-items: center;
-      gap: 7px;
-    }
-
-    .icon-button {
-      min-width: 41px;
-      height: 38px;
-      padding: 0 12px;
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      gap: 8px;
-      border: 1px solid rgba(255, 255, 255, 0.09);
-      border-radius: 12px;
-      background: rgba(255, 255, 255, 0.055);
-      color: #e9edf2;
-      font-size: 11px;
-      font-weight: 650;
-      cursor: pointer;
-      transition:
-        background 0.15s ease,
-        transform 0.08s ease;
-    }
-
-    .icon-button:hover {
-      background: rgba(255, 255, 255, 0.095);
-    }
-
-    .icon-button:active {
-      transform: scale(0.97);
-    }
-
-    .icon-button svg {
-      width: 17px;
-      height: 17px;
-      flex: 0 0 auto;
-    }
-
-    .bottom-status {
+    .fullscreen-button {
       position: absolute;
-      left: 50%;
+      right: var(--safe-right);
       bottom: var(--safe-bottom);
       z-index: 20;
-      min-width: 210px;
-      max-width: calc(100% - 28px);
-      padding: 9px 14px;
-      border: 1px solid var(--border);
-      border-radius: 999px;
-      background: rgba(13, 17, 22, 0.72);
-      color: var(--muted);
-      box-shadow: var(--shadow);
-      font-size: 10.5px;
-      text-align: center;
-      transform: translateX(-50%);
-      backdrop-filter: blur(18px);
-      -webkit-backdrop-filter: blur(18px);
-      transition:
-        opacity 0.22s ease,
-        transform 0.22s ease,
-        color 0.18s ease,
-        border-color 0.18s ease;
+      width: 42px;
+      height: 42px;
+      padding: 0;
+      display: grid;
+      place-items: center;
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      border-radius: 50%;
+      background: rgba(3, 5, 7, 0.5);
+      color: #f4f6f8;
+      box-shadow: 0 8px 28px rgba(0, 0, 0, 0.35);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      cursor: pointer;
+      transition: opacity 0.18s ease, transform 0.08s ease;
     }
 
-    .bottom-status.live {
-      color: #cfead9;
-      border-color: rgba(69, 212, 131, 0.24);
+    .fullscreen-button:active {
+      transform: scale(0.95);
     }
 
-    .bottom-status.warning {
-      color: #ffd4a7;
-      border-color: rgba(255, 159, 67, 0.32);
+    .fullscreen-button svg {
+      width: 19px;
+      height: 19px;
     }
 
-    .bottom-status.error {
-      color: #ffb1ad;
-      border-color: rgba(255, 111, 111, 0.34);
-    }
-
-    .loading-line {
+    .loading {
       position: absolute;
       left: 0;
       top: 0;
@@ -364,77 +239,28 @@
       transition: opacity 0.15s ease;
     }
 
-    .loading-line.active {
+    .loading.active {
       opacity: 1;
     }
 
-    .loading-line::before {
+    .loading::before {
       content: "";
       position: absolute;
-      left: -38%;
+      left: -35%;
       top: 0;
-      width: 38%;
+      width: 35%;
       height: 100%;
-      background: linear-gradient(
-        90deg,
-        transparent,
-        #9eb4c8,
-        transparent
-      );
-      animation: loading-sweep 1.05s linear infinite;
+      background: linear-gradient(90deg, transparent, #a8b7c5, transparent);
+      animation: sweep 1s linear infinite;
     }
 
-    @keyframes loading-sweep {
+    @keyframes sweep {
       to {
         left: 100%;
       }
     }
 
-    .toast {
-      position: absolute;
-      left: 50%;
-      top: calc(var(--safe-top) + 70px);
-      z-index: 60;
-      max-width: calc(100% - 28px);
-      padding: 10px 14px;
-      border: 1px solid var(--border);
-      border-radius: 12px;
-      background: var(--surface-strong);
-      color: var(--text);
-      box-shadow: var(--shadow);
-      font-size: 12px;
-      text-align: center;
-      opacity: 0;
-      transform: translate(-50%, -7px);
-      pointer-events: none;
-      transition:
-        opacity 0.18s ease,
-        transform 0.18s ease;
-    }
-
-    .toast.show {
-      opacity: 1;
-      transform: translate(-50%, 0);
-    }
-
-    .toast.error {
-      border-color: rgba(255, 111, 111, 0.36);
-      color: #ffaaa7;
-    }
-
-    body.controls-hidden .topbar {
-      opacity: 0;
-      transform: translateY(-10px);
-      pointer-events: none;
-    }
-
-    body.controls-hidden .bottom-status {
-      opacity: 0;
-      transform: translate(-50%, 8px);
-      pointer-events: none;
-    }
-
-    body.force-landscape .app-shell {
+    body.force-landscape .app {
       left: 50%;
       top: 50%;
       right: auto;
@@ -442,71 +268,24 @@
       width: 100vh;
       height: 100vw;
       transform: translate(-50%, -50%) rotate(90deg);
-      transform-origin: center center;
+      transform-origin: center;
     }
 
-    @media (max-width: 620px) {
-      .topbar {
-        min-height: 50px;
-        border-radius: 16px;
-      }
-
-      .icon-button span {
-        display: none;
-      }
-
-      .icon-button {
-        width: 39px;
-        min-width: 39px;
-        padding: 0;
-      }
-
-      .bottom-status {
-        min-width: 0;
-        width: auto;
-      }
-    }
-
-    @media (orientation: landscape) and (max-height: 520px) {
-      .topbar {
-        top: max(8px, env(safe-area-inset-top));
-      }
-
-      .bottom-status {
-        bottom: max(8px, env(safe-area-inset-bottom));
-      }
-    }
-
-    @media (prefers-reduced-motion: reduce) {
-      *,
-      *::before,
-      *::after {
-        animation: none !important;
-        transition: none !important;
-      }
+    body.fullscreen-view .status,
+    body.fullscreen-view .fullscreen-button {
+      opacity: 0;
+      pointer-events: none;
     }
   </style>
 </head>
 
 <body>
-  <div class="app-shell" id="appShell">
-    <div class="loading-line" id="loadingLine"></div>
+  <div class="app">
+    <div class="loading" id="loading"></div>
 
-    <main class="viewer" id="viewer">
-      <div class="frame-stage">
-        <img
-          class="ambient"
-          id="ambientImage"
-          alt=""
-          aria-hidden="true"
-        >
-
-        <img
-          class="live-frame"
-          id="liveFrame"
-          alt="UCB Eyes live screen"
-        >
-      </div>
+    <main class="stage" id="stage">
+      <img class="ambient" id="ambient" alt="" aria-hidden="true">
+      <img class="frame" id="frame" alt="UCB Eyes live screen">
 
       <section class="placeholder" id="placeholder">
         <div class="placeholder-mark" aria-hidden="true">
@@ -525,74 +304,40 @@
         </div>
 
         <h1 id="placeholderTitle">Connecting</h1>
-
-        <p id="placeholderText">
-          Opening the live UCB Eyes viewer.
-        </p>
+        <p id="placeholderText">Opening the live UCB Eyes viewer.</p>
       </section>
     </main>
 
-    <header class="topbar" id="topbar">
-      <div class="identity">
-        <span class="status-dot" id="statusDot" aria-hidden="true"></span>
-
-        <div class="identity-copy">
-          <strong>UCB Eyes Live · 1 FPS</strong>
-          <span id="connectionLabel">Connecting anonymously</span>
-        </div>
-      </div>
-
-      <div class="controls">
-        <button
-          class="icon-button"
-          id="refreshButton"
-          type="button"
-          aria-label="Refresh current frame"
-          title="Refresh current frame"
-        >
-          <svg
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-          >
-            <path d="M20 11a8 8 0 1 0 2 5"></path>
-            <path d="M20 4v7h-7"></path>
-          </svg>
-          <span>Refresh</span>
-        </button>
-
-        <button
-          class="icon-button"
-          id="landscapeButton"
-          type="button"
-          aria-label="Enter landscape full screen"
-          title="Enter landscape full screen"
-        >
-          <svg
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="1.9"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-          >
-            <rect x="3" y="5" width="18" height="14" rx="2"></rect>
-            <path d="M8 9 5 12l3 3"></path>
-            <path d="m16 9 3 3-3 3"></path>
-          </svg>
-          <span>Landscape</span>
-        </button>
-      </div>
-    </header>
-
-    <div class="bottom-status" id="bottomStatus">
-      Waiting for the 1 FPS feed
+    <div class="status warning" id="status">
+      <span class="status-dot" aria-hidden="true"></span>
+      <span id="statusText">Connecting</span>
     </div>
 
-    <div class="toast" id="toast" role="status"></div>
+    <button
+      class="fullscreen-button"
+      id="fullscreenButton"
+      type="button"
+      aria-label="Landscape full screen"
+      title="Landscape full screen"
+    >
+      <svg
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="1.9"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+      >
+        <path d="M8 3H3v5"></path>
+        <path d="m3 3 6 6"></path>
+        <path d="M16 3h5v5"></path>
+        <path d="m21 3-6 6"></path>
+        <path d="M8 21H3v-5"></path>
+        <path d="m3 21 6-6"></path>
+        <path d="M16 21h5v-5"></path>
+        <path d="m21 21-6-6"></path>
+      </svg>
+    </button>
   </div>
 
   <script type="module">
@@ -601,8 +346,7 @@
 
     import {
       getAuth,
-      signInAnonymously,
-      onAuthStateChanged
+      signInAnonymously
     } from
       "https://www.gstatic.com/firebasejs/12.16.0/firebase-auth.js";
 
@@ -628,44 +372,29 @@
     const auth = getAuth(app);
     const db = getFirestore(app);
 
-    const liveFrame = document.querySelector("#liveFrame");
-    const ambientImage = document.querySelector("#ambientImage");
+    const frame = document.querySelector("#frame");
+    const ambient = document.querySelector("#ambient");
     const placeholder = document.querySelector("#placeholder");
     const placeholderTitle = document.querySelector("#placeholderTitle");
     const placeholderText = document.querySelector("#placeholderText");
-    const statusDot = document.querySelector("#statusDot");
-    const connectionLabel = document.querySelector("#connectionLabel");
-    const bottomStatus = document.querySelector("#bottomStatus");
-    const loadingLine = document.querySelector("#loadingLine");
-    const refreshButton = document.querySelector("#refreshButton");
-    const landscapeButton = document.querySelector("#landscapeButton");
-    const viewer = document.querySelector("#viewer");
-    const toastElement = document.querySelector("#toast");
+    const status = document.querySelector("#status");
+    const statusText = document.querySelector("#statusText");
+    const loading = document.querySelector("#loading");
+    const fullscreenButton = document.querySelector("#fullscreenButton");
+    const stage = document.querySelector("#stage");
 
     const currentRef = doc(db, "live_capture", "current");
 
-    let unsubscribe = null;
     let currentVersion = "";
     let latestMetadata = null;
-    let latestUpdatedAt = 0;
     let loadingVersion = "";
-    let landscapeRequested = false;
-    let controlsTimer = null;
-    let toastTimer = null;
+    let lastDisplayedAt = 0;
+    let landscapeActive = false;
     let wakeLock = null;
 
-    function setConnection(state, label) {
-      statusDot.className = "status-dot";
-
-      if (state === "live") {
-        statusDot.classList.add("live");
-      } else if (state === "warning") {
-        statusDot.classList.add("warning");
-      } else if (state === "error") {
-        statusDot.classList.add("error");
-      }
-
-      connectionLabel.textContent = label;
+    function setStatus(state, text) {
+      status.className = `status ${state}`;
+      statusText.textContent = text;
     }
 
     function setPlaceholder(title, text, visible = true) {
@@ -675,92 +404,27 @@
     }
 
     function setLoading(active) {
-      loadingLine.classList.toggle("active", active);
+      loading.classList.toggle("active", active);
     }
 
-    function toast(message, isError = false) {
-      toastElement.textContent = message;
-      toastElement.classList.toggle("error", isError);
-      toastElement.classList.add("show");
-
-      clearTimeout(toastTimer);
-
-      toastTimer = setTimeout(() => {
-        toastElement.classList.remove("show");
-      }, isError ? 4200 : 2400);
-    }
-
-    function timestampToMillis(value) {
-      if (!value) return 0;
-
-      if (typeof value.toMillis === "function") {
-        return value.toMillis();
-      }
-
-      const parsed = Date.parse(value);
-      return Number.isFinite(parsed) ? parsed : 0;
-    }
-
-    function ageLabel(milliseconds) {
-      if (!milliseconds) return "Waiting for the 1 FPS feed";
-
-      const seconds = Math.max(
-        0,
-        Math.floor((Date.now() - milliseconds) / 1000)
-      );
-
-      if (seconds < 2) return "Live · 1 FPS";
-      if (seconds <= 5) return `Live · ${seconds}s behind`;
-      if (seconds <= 15) return `Interrupted · no new frame for ${seconds}s`;
-
-      const minutes = Math.floor(seconds / 60);
-
-      if (minutes < 1) {
-        return `Disconnected · no new frame for ${seconds}s`;
-      }
-
-      return `Disconnected · last frame ${minutes}m ago`;
-    }
-
-    function setBottomStatus(state, text) {
-      bottomStatus.className = "bottom-status";
-
-      if (state === "live") {
-        bottomStatus.classList.add("live");
-      } else if (state === "warning") {
-        bottomStatus.classList.add("warning");
-      } else if (state === "error") {
-        bottomStatus.classList.add("error");
-      }
-
-      bottomStatus.textContent = text;
-    }
-
-    function updateFrameAge() {
-      if (!latestUpdatedAt) {
-        setBottomStatus("warning", "Waiting for the 1 FPS feed");
+    function updateConnectionAge() {
+      if (!lastDisplayedAt) {
+        setStatus("warning", "Waiting for feed");
         return;
       }
 
-      const ageText = ageLabel(latestUpdatedAt);
-      const age = Date.now() - latestUpdatedAt;
+      const seconds = Math.floor((Date.now() - lastDisplayedAt) / 1000);
 
-      if (age > 15000) {
-        setConnection("error", "Disconnected · no recent frame");
-        setBottomStatus("error", ageText);
-      } else if (age > 5000) {
-        setConnection("warning", "Interrupted · no new frame");
-        setBottomStatus("warning", ageText);
-      } else if (liveFrame.classList.contains("visible")) {
-        setConnection("live", "Connected · 1 FPS");
-        setBottomStatus("live", ageText);
+      if (seconds > 15) {
+        setStatus("error", `Disconnected · ${seconds}s without a frame`);
+      } else if (seconds > 5) {
+        setStatus("warning", `Interrupted · ${seconds}s without a frame`);
       } else {
-        setConnection("warning", "Waiting for frame");
-        setBottomStatus("warning", ageText);
+        setStatus("live", "Connected · 1 FPS");
       }
     }
 
-    async function loadCurrentFrame(metadata, attempt = 0) {
+    async function readFrame(metadata, attempt = 0) {
       const version = String(metadata.version || "");
       const chunkCount = Number(metadata.chunkCount || 0);
 
@@ -769,7 +433,6 @@
           "Waiting for a frame",
           "The publisher is connected, but no complete image is available yet."
         );
-        setLoading(false);
         return;
       }
 
@@ -791,7 +454,7 @@
           )
         );
 
-        const chunks = snapshots.map((snapshot, index) => {
+        const parts = snapshots.map((snapshot, index) => {
           if (!snapshot.exists()) {
             throw new Error(`Chunk ${index} is missing`);
           }
@@ -805,35 +468,36 @@
           return String(data.data || "");
         });
 
-        const dataUrl = chunks.join("");
+        const dataUrl = parts.join("");
 
         if (!dataUrl.startsWith("data:image/")) {
-          throw new Error("The current frame is not a valid image");
+          throw new Error("The rebuilt frame is not an image");
         }
 
-        await displayFrame(dataUrl, metadata);
+        if (String(latestMetadata?.version || "") !== version) {
+          return;
+        }
+
+        await displayFrame(dataUrl);
         currentVersion = version;
       } catch (error) {
         if (attempt < 8) {
           await new Promise(resolve => {
-            setTimeout(resolve, 250 + attempt * 160);
+            setTimeout(resolve, 220 + attempt * 150);
           });
 
-          return loadCurrentFrame(metadata, attempt + 1);
+          return readFrame(metadata, attempt + 1);
         }
 
         console.error(error);
+        setStatus("error", "Frame unavailable");
 
-        setConnection("error", "Connected · frame unavailable");
-
-        if (!liveFrame.classList.contains("visible")) {
+        if (!frame.classList.contains("visible")) {
           setPlaceholder(
             "Frame unavailable",
-            "The latest frame could not be rebuilt. The viewer will retry automatically."
+            "The viewer will retry when the publisher sends another frame."
           );
         }
-
-        toast("Could not rebuild the latest frame.", true);
       } finally {
         if (loadingVersion === version) {
           loadingVersion = "";
@@ -843,120 +507,63 @@
       }
     }
 
-    function displayFrame(dataUrl, metadata) {
+    function displayFrame(dataUrl) {
       return new Promise((resolve, reject) => {
         const preload = new Image();
 
         preload.onload = () => {
-          liveFrame.src = dataUrl;
-          ambientImage.src = dataUrl;
-
-          liveFrame.classList.add("visible");
-          ambientImage.classList.add("visible");
+          frame.src = dataUrl;
+          ambient.src = dataUrl;
+          frame.classList.add("visible");
+          ambient.classList.add("visible");
           setPlaceholder("", "", false);
-
-          latestUpdatedAt =
-            timestampToMillis(metadata.updatedAt) ||
-            Date.now();
-
-          setConnection("live", "Connected · 1 FPS");
-          updateFrameAge();
+          lastDisplayedAt = Date.now();
+          setStatus("live", "Connected · 1 FPS");
           resolve();
         };
 
         preload.onerror = () => {
-          reject(new Error("The rebuilt image could not be decoded"));
+          reject(new Error("The image could not be decoded"));
         };
 
         preload.src = dataUrl;
       });
     }
 
-    async function reloadCurrentFrame() {
-      if (!latestMetadata) {
-        toast("No live frame metadata is available yet.");
-        return;
-      }
-
-      currentVersion = "";
-      await loadCurrentFrame(latestMetadata);
-    }
-
-    function startFrameListener() {
-      if (unsubscribe) return;
-
-      unsubscribe = onSnapshot(
+    function startListener() {
+      onSnapshot(
         currentRef,
-        { includeMetadataChanges: true },
         snapshot => {
-          setConnection("warning", "Connected · checking frame");
-
           if (!snapshot.exists()) {
             latestMetadata = null;
-            latestUpdatedAt = 0;
-
+            currentVersion = "";
+            setStatus("warning", "Waiting for publisher");
             setPlaceholder(
               "Waiting for the publisher",
               "Start the UCB Eyes capture HTA to publish the first frame."
             );
-
-            setBottomStatus("warning", "Waiting for the 1 FPS feed");
             return;
           }
 
-          const metadata = snapshot.data();
-          latestMetadata = metadata;
-
-          const version = String(metadata.version || "");
+          latestMetadata = snapshot.data();
+          const version = String(latestMetadata.version || "");
 
           if (version && version !== currentVersion) {
-            loadCurrentFrame(metadata);
+            readFrame(latestMetadata);
           }
         },
         error => {
           console.error(error);
-          setConnection("error", "Disconnected");
+          setStatus("error", "Disconnected");
 
-          setPlaceholder(
-            "Connection lost",
-            "The live viewer will continue trying to reconnect."
-          );
-
-          setBottomStatus(
-            "error",
-            "Disconnected · Firestore connection lost"
-          );
-
-          toast("Firestore connection lost.", true);
+          if (!frame.classList.contains("visible")) {
+            setPlaceholder(
+              "Connection lost",
+              "The viewer will continue trying to reconnect."
+            );
+          }
         }
       );
-    }
-
-    async function initializeViewer() {
-      setConnection("waiting", "Connecting anonymously");
-
-      try {
-        await signInAnonymously(auth);
-      } catch (error) {
-        console.error(error);
-
-        setConnection("error", "Authentication failed");
-
-        setPlaceholder(
-          "Authentication failed",
-          "Enable Anonymous Authentication in the UCB Eyes Firebase project."
-        );
-
-        return;
-      }
-
-      onAuthStateChanged(auth, user => {
-        if (!user) return;
-
-        setConnection("warning", "Connected · waiting for frame");
-        setBottomStatus("warning", "Waiting for the 1 FPS feed");
-        startFrameListener();
-      });
     }
 
     async function requestWakeLock() {
@@ -969,77 +576,55 @@
       }
     }
 
-    async function enterLandscapeMode() {
-      landscapeRequested = true;
-      showControls();
+    async function enterLandscape() {
+      landscapeActive = true;
+      document.body.classList.add("fullscreen-view");
 
       try {
-        const root = document.documentElement;
-
-        if (!document.fullscreenElement) {
-          if (root.requestFullscreen) {
-            await root.requestFullscreen({ navigationUI: "hide" });
-          } else if (root.webkitRequestFullscreen) {
-            root.webkitRequestFullscreen();
-          }
+        if (document.documentElement.requestFullscreen) {
+          await document.documentElement.requestFullscreen({
+            navigationUI: "hide"
+          });
+        } else if (document.documentElement.webkitRequestFullscreen) {
+          document.documentElement.webkitRequestFullscreen();
         }
       } catch {
-        // iOS Safari may not expose standard element fullscreen.
+        // iOS Safari may not expose element fullscreen.
       }
 
-      let orientationLocked = false;
+      let locked = false;
 
       try {
-        if (
-          screen.orientation &&
-          typeof screen.orientation.lock === "function"
-        ) {
+        if (screen.orientation?.lock) {
           await screen.orientation.lock("landscape");
-          orientationLocked = true;
+          locked = true;
         }
       } catch {
-        orientationLocked = false;
+        locked = false;
       }
 
-      if (!orientationLocked && window.innerHeight > window.innerWidth) {
+      if (!locked && window.innerHeight > window.innerWidth) {
         document.body.classList.add("force-landscape");
       }
-
-      landscapeButton.setAttribute(
-        "aria-label",
-        "Exit landscape full screen"
-      );
-
-      landscapeButton.title = "Exit landscape full screen";
-      landscapeButton.querySelector("span").textContent = "Exit";
 
       await requestWakeLock();
     }
 
-    async function exitLandscapeMode() {
-      landscapeRequested = false;
+    async function exitLandscape() {
+      landscapeActive = false;
       document.body.classList.remove("force-landscape");
+      document.body.classList.remove("fullscreen-view");
 
       try {
         if (document.fullscreenElement && document.exitFullscreen) {
           await document.exitFullscreen();
-        } else if (
-          document.webkitFullscreenElement &&
-          document.webkitExitFullscreen
-        ) {
-          document.webkitExitFullscreen();
         }
       } catch {
-        // Ignore exit failures.
+        // Ignore fullscreen exit failures.
       }
 
       try {
-        if (
-          screen.orientation &&
-          typeof screen.orientation.unlock === "function"
-        ) {
-          screen.orientation.unlock();
-        }
+        screen.orientation?.unlock?.();
       } catch {
         // Ignore orientation unlock failures.
       }
@@ -1053,101 +638,70 @@
 
         wakeLock = null;
       }
+    }
 
-      landscapeButton.setAttribute(
-        "aria-label",
-        "Enter landscape full screen"
+    async function toggleLandscape() {
+      if (landscapeActive) {
+        await exitLandscape();
+      } else {
+        await enterLandscape();
+      }
+    }
+
+    function updateLandscapeFallback() {
+      if (!landscapeActive) return;
+
+      document.body.classList.toggle(
+        "force-landscape",
+        window.innerHeight > window.innerWidth
       );
-
-      landscapeButton.title = "Enter landscape full screen";
-      landscapeButton.querySelector("span").textContent = "Landscape";
-      showControls();
     }
 
-    async function toggleLandscapeMode() {
-      const active =
-        landscapeRequested ||
-        document.fullscreenElement ||
-        document.webkitFullscreenElement ||
-        document.body.classList.contains("force-landscape");
+    fullscreenButton.addEventListener("click", toggleLandscape);
 
-      if (active) {
-        await exitLandscapeMode();
-      } else {
-        await enterLandscapeMode();
+    stage.addEventListener("click", () => {
+      if (landscapeActive) {
+        document.body.classList.toggle("fullscreen-view");
       }
-    }
-
-    function updateOrientationFallback() {
-      if (!landscapeRequested) return;
-
-      const isPortrait = window.innerHeight > window.innerWidth;
-
-      if (isPortrait) {
-        document.body.classList.add("force-landscape");
-      } else {
-        document.body.classList.remove("force-landscape");
-      }
-    }
-
-    function showControls() {
-      document.body.classList.remove("controls-hidden");
-      clearTimeout(controlsTimer);
-
-      if (
-        landscapeRequested ||
-        document.fullscreenElement ||
-        document.body.classList.contains("force-landscape")
-      ) {
-        controlsTimer = setTimeout(() => {
-          document.body.classList.add("controls-hidden");
-        }, 3200);
-      }
-    }
-
-    refreshButton.addEventListener("click", reloadCurrentFrame);
-    landscapeButton.addEventListener("click", toggleLandscapeMode);
-
-    viewer.addEventListener("click", showControls);
-    viewer.addEventListener("touchstart", showControls, { passive: true });
-
-    window.addEventListener("resize", updateOrientationFallback);
-    window.addEventListener("orientationchange", () => {
-      setTimeout(updateOrientationFallback, 180);
     });
 
-    document.addEventListener("fullscreenchange", () => {
-      if (!document.fullscreenElement && landscapeRequested) {
-        document.body.classList.remove("force-landscape");
-        landscapeRequested = false;
-        landscapeButton.querySelector("span").textContent = "Landscape";
-      }
+    window.addEventListener("resize", updateLandscapeFallback);
+    window.addEventListener("orientationchange", () => {
+      setTimeout(updateLandscapeFallback, 180);
+    });
 
-      showControls();
+    window.addEventListener("online", () => {
+      setStatus("warning", "Online · reconnecting");
+    });
+
+    window.addEventListener("offline", () => {
+      setStatus("error", "Disconnected · device offline");
     });
 
     document.addEventListener("visibilitychange", async () => {
       if (
         document.visibilityState === "visible" &&
-        landscapeRequested &&
+        landscapeActive &&
         !wakeLock
       ) {
         await requestWakeLock();
       }
     });
 
-    window.addEventListener("online", () => {
-      setConnection("waiting", "Online · reconnecting");
-    });
+    setInterval(updateConnectionAge, 1000);
 
-    window.addEventListener("offline", () => {
-      setConnection("error", "Offline");
-      setBottomStatus("error", "Disconnected · this device is offline");
-      toast("This device is offline.", true);
-    });
-
-    setInterval(updateFrameAge, 1000);
-    initializeViewer();
+    try {
+      await signInAnonymously(auth);
+      setStatus("warning", "Connected · waiting for frame");
+      startListener();
+    } catch (error) {
+      console.error(error);
+      setStatus("error", "Authentication failed");
+      setPlaceholder(
+        "Authentication failed",
+        "Enable Anonymous Authentication in the UCB Eyes Firebase project."
+      );
+    }
   </script>
 </body>
 </html>
