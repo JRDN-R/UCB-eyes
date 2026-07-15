@@ -702,7 +702,7 @@
     }
 
     function ageLabel(milliseconds) {
-      if (!milliseconds) return "Waiting for the first frame";
+      if (!milliseconds) return "Waiting for the 1 FPS feed";
 
       const seconds = Math.max(
         0,
@@ -710,10 +710,30 @@
       );
 
       if (seconds < 2) return "Live · 1 FPS";
-      if (seconds < 60) return `Live · ${seconds}s behind`;
+      if (seconds <= 5) return `Live · ${seconds}s behind`;
+      if (seconds <= 15) return `Interrupted · no new frame for ${seconds}s`;
 
       const minutes = Math.floor(seconds / 60);
-      return `Last frame ${minutes}m ago`;
+
+      if (minutes < 1) {
+        return `Disconnected · no new frame for ${seconds}s`;
+      }
+
+      return `Disconnected · last frame ${minutes}m ago`;
+    }
+
+    function setBottomStatus(state, text) {
+      bottomStatus.className = "bottom-status";
+
+      if (state === "live") {
+        bottomStatus.classList.add("live");
+      } else if (state === "warning") {
+        bottomStatus.classList.add("warning");
+      } else if (state === "error") {
+        bottomStatus.classList.add("error");
+      }
+
+      bottomStatus.textContent = text;
     }
 
     function updateFrameAge() {
