@@ -425,10 +425,14 @@
     let lastDisplayedAt = 0;
     let landscapeActive = false;
     let wakeLock = null;
+    let refreshPending = false;
+    let connectionError = "";
+    const miniPlayer = createMiniPlayer({ frame, onResume: refreshCurrentFrame });
 
     function setStatus(state, text) {
       status.className = `status ${state}`;
       statusText.textContent = text;
+      miniPlayer.setStatus(state, text);
     }
 
     function setPlaceholder(title, text, visible = true) {
@@ -442,12 +446,22 @@
     }
 
     function updateConnectionAge() {
+      if (!navigator.onLine) {
+        setStatus("error", "Disconnected · device offline");
+        return;
+      }
+      if (connectionError) {
+        setStatus("error", connectionError);
+        return;
+      }
       if (!lastDisplayedAt) {
         setStatus("warning", "Waiting for feed");
         return;
       }
 
-      const seconds = Math.floor((Date.now() - lastDisplayedAt) / 1000);
+      // Prefer the publisher's timestamp; reopening an old frame is not a new update.
+      const frameTime = Math.min(miniPlayer.frameTime || lastDisplayedAt, lastDisplayedAt);
+      const seconds = Math.max(0, Math.floor((Date.now() - frameTime) / 1000));
 
       if (seconds > 15) {
         setStatus("error", `Disconnected · ${seconds}s without a frame`);
@@ -461,6 +475,7 @@
     async function readFrame(metadata, attempt = 0) {
       const version = String(metadata.version || "");
       const chunkCount = Number(metadata.chunkCount || 0);
+      if (String(latestMetadata?.version || "") !== version) return;
 
       if (!version || !Number.isInteger(chunkCount) || chunkCount < 1) {
         setPlaceholder(
@@ -512,9 +527,9 @@
           return;
         }
 
-        await displayFrame(dataUrl);
-        currentVersion = version;
+        if (await displayFrame(dataUrl, metadata)) currentVersion = version;
       } catch (error) {
+        if (String(latestMetadata?.version || "") !== version) return;
         if (attempt < 8) {
           await new Promise(resolve => {
             setTimeout(resolve, 220 + attempt * 150);
@@ -535,25 +550,30 @@
       } finally {
         if (loadingVersion === version) {
           loadingVersion = "";
+          setLoading(false);
         }
-
-        setLoading(false);
       }
     }
 
-    function displayFrame(dataUrl) {
+    function displayFrame(dataUrl, metadata) {
       return new Promise((resolve, reject) => {
         const preload = new Image();
 
         preload.onload = () => {
+          // A newer update may have arrived while this image was decoding.
+          if (String(latestMetadata?.version || "") !== String(metadata.version || "")) {
+            resolve(false);
+            return;
+          }
           frame.src = dataUrl;
           ambient.src = dataUrl;
           frame.classList.add("visible");
           ambient.classList.add("visible");
           setPlaceholder("", "", false);
           lastDisplayedAt = Date.now();
-          setStatus("live", "Connected · 1 FPS");
-          resolve();
+          miniPlayer.setFrame(preload, metadata, lastDisplayedAt);
+          updateConnectionAge();
+          resolve(true);
         };
 
         preload.onerror = () => {
@@ -568,9 +588,11 @@
       onSnapshot(
         currentRef,
         snapshot => {
+          connectionError = "";
           if (!snapshot.exists()) {
             latestMetadata = null;
             currentVersion = "";
+            lastDisplayedAt = 0;
             setStatus("warning", "Waiting for publisher");
             setPlaceholder(
               "Waiting for the publisher",
@@ -588,6 +610,7 @@
         },
         error => {
           console.error(error);
+          connectionError = "Disconnected";
           setStatus("error", "Disconnected");
 
           if (!frame.classList.contains("visible")) {
@@ -598,6 +621,26 @@
           }
         }
       );
+    }
+
+    async function refreshCurrentFrame() {
+      if (!auth.currentUser || refreshPending || !navigator.onLine) return;
+      refreshPending = true;
+      const versionBeforeRead = String(latestMetadata?.version || "");
+      try {
+        const snapshot = await getDocFromServer(currentRef);
+        // Never overwrite metadata that the live listener advanced during this read.
+        if (String(latestMetadata?.version || "") !== versionBeforeRead) return;
+        if (!snapshot.exists()) return;
+        latestMetadata = snapshot.data();
+        const version = String(latestMetadata.version || "");
+        if (version && version !== currentVersion) await readFrame(latestMetadata);
+        updateConnectionAge();
+      } catch (error) {
+        console.warn("Could not refresh the current frame:", error);
+      } finally {
+        refreshPending = false;
+      }
     }
 
     async function requestWakeLock() {
@@ -724,6 +767,435 @@
       }
     });
 
+
+/*
+ * Native VIDEO PiP, not a floating HTML box. The footer is painted into the
+ * captured pixels. No camera/microphone, recording, or extra Firebase writes.
+ * Canvas/Firestore updates remain subject to iOS background suspension; a
+ * native PiP window does not turn this screenshot feed into a server stream.
+ */
+function createMiniPlayer({ frame, onResume }) {
+  const parent = frame.parentElement;
+  const host = document.querySelector('.app');
+  const canvas = document.createElement('canvas');
+  canvas.id = 'videoCanvas';
+  canvas.className = 'frame composite-frame';
+  canvas.setAttribute('role', 'img');
+  canvas.setAttribute('aria-label', 'UCB Eyes live screen with last update time');
+  const video = document.createElement('video');
+  video.id = 'miniPlayerVideo';
+  video.className = 'frame mini-video';
+  video.muted = true;
+  video.defaultMuted = true;
+  video.autoplay = true;
+  video.playsInline = true;
+  video.setAttribute('muted', '');
+  video.setAttribute('playsinline', '');
+  video.setAttribute('webkit-playsinline', '');
+  video.setAttribute('aria-label', 'UCB Eyes live video');
+  video.disablePictureInPicture = false;
+  parent.append(canvas, video);
+
+  const style = document.createElement('style');
+  style.textContent = `
+    .frame-safe-area { display: grid; grid-template: minmax(0, 1fr) / minmax(0, 1fr); }
+    .frame-safe-area > .frame { grid-area: 1 / 1; min-width: 0; min-height: 0; }
+    .frame-safe-area.has-composite > #frame { opacity: 0; }
+    .composite-frame { z-index: 1; pointer-events: none; }
+    .mini-video { z-index: 2; pointer-events: none; }
+    .pip-button { right: calc(var(--safe-right) + 52px); width: 54px;
+      border-radius: 13px; gap: 1px; align-content: center; }
+    .pip-button span { font-size: 9px; font-weight: 750; line-height: 1; }
+    .pip-button[aria-pressed="true"] { color: var(--live); border-color: var(--live); }
+    .pip-button:focus-visible { outline: 2px solid white; outline-offset: 3px; }
+    .status { max-width: calc(100% - 140px); line-height: 1.3; }
+    .mini-notice { position: absolute; z-index: 60; top: var(--safe-top);
+      left: var(--safe-left); right: var(--safe-right); margin: 0 auto;
+      max-width: 480px; padding: 13px 42px 13px 15px; border-radius: 14px;
+      border: 1px solid #ffffff29; background: #11161ff2; color: #e7edf5;
+      font-size: 12px; line-height: 1.5; box-shadow: 0 8px 30px #0008; }
+    .mini-notice[hidden] { display: none; }
+    .mini-notice button { position: absolute; right: 3px; top: 3px; width: 38px;
+      height: 38px; border: 0; background: none; color: inherit; font-size: 23px; }
+  `;
+  document.head.append(style);
+
+  const button = document.createElement('button');
+  button.id = 'pipButton';
+  button.type = 'button';
+  button.className = 'fullscreen-button pip-button';
+  button.title = 'Mini player (Picture in Picture)';
+  button.setAttribute('aria-label', 'Open mini player, Picture in Picture');
+  button.setAttribute('aria-pressed', 'false');
+  button.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><rect x="12" y="11" width="7" height="6" rx="1" fill="currentColor" stroke="none"/><path d="M6 7l4 4M6 11h4V7"/></svg><span>PiP</span>';
+  const notice = document.createElement('div');
+  notice.className = 'mini-notice';
+  notice.hidden = true;
+  notice.setAttribute('role', 'status');
+  const noticeText = document.createElement('span');
+  const dismiss = document.createElement('button');
+  dismiss.type = 'button';
+  dismiss.setAttribute('aria-label', 'Dismiss player message');
+  dismiss.textContent = '×';
+  dismiss.onclick = () => { notice.hidden = true; };
+  notice.append(noticeText, dismiss);
+  host.append(button, notice);
+
+  const ctx = canvas.getContext('2d', { alpha: false });
+  const colors = { live: '#45d483', warning: '#ff9f43', error: '#ff6f6f' };
+  const clock = new Intl.DateTimeFormat(undefined, {
+    hour: 'numeric', minute: '2-digit', second: '2-digit'
+  });
+  const day = new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric' });
+  let image = null;
+  let version = '';
+  let updates = 0;
+  let receivedAt = 0;
+  let sourceTime = 0;
+  let state = 'warning';
+  let statusText = 'Waiting for feed';
+  let stream = null;
+  let streamError = '';
+  let captureFailed = false;
+  let noticeTimer = 0;
+  let pendingTimer = 0;
+  let pending = false;
+  let active = false;
+  let disposed = false;
+  let lastPaint = '';
+  let frameAreaHeight = 0;
+  let footerHeight = 0;
+  let repaintTimer = 0;
+
+  function timestamp(value) {
+    let time = 0;
+    try {
+      if (value && typeof value.toMillis === 'function') time = value.toMillis();
+      else if (value instanceof Date) time = value.getTime();
+      else if (value && typeof value === 'object' && Number.isFinite(value.seconds)) {
+        time = value.seconds * 1000 + (Number(value.nanoseconds) || 0) / 1e6;
+      } else if (typeof value === 'number' && Number.isFinite(value)) {
+        time = value < 1e11 ? value * 1000 : value;
+      } else if (typeof value === 'string' && value.trim()) {
+        const numeric = Number(value);
+        time = Number.isFinite(numeric)
+          ? (numeric < 1e11 ? numeric * 1000 : numeric)
+          : Date.parse(value);
+      }
+    } catch { /* Unknown publisher timestamp: label the local receipt instead. */ }
+    return Number.isFinite(time) && time > 0 && time <= 8.64e15 ? time : 0;
+  }
+
+  function showNotice(text, duration = 9000) {
+    clearTimeout(noticeTimer);
+    noticeText.textContent = text;
+    notice.hidden = false;
+    if (duration) noticeTimer = setTimeout(() => { notice.hidden = true; }, duration);
+  }
+
+  function isActive() {
+    return document.pictureInPictureElement === video ||
+      video.webkitPresentationMode === 'picture-in-picture';
+  }
+
+  function hasPiPAPI() {
+    return (document.pictureInPictureEnabled &&
+      typeof video.requestPictureInPicture === 'function') ||
+      typeof video.webkitSetPresentationMode === 'function';
+  }
+
+  function fitText(text, x, y, maxWidth, fontSize, color) {
+    let size = fontSize;
+    ctx.font = `650 ${size}px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif`;
+    while (ctx.measureText(text).width > maxWidth && size > fontSize * 0.5) {
+      size -= 1;
+      ctx.font = `650 ${size}px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif`;
+    }
+    ctx.fillStyle = color;
+    ctx.fillText(text, x, y, maxWidth);
+  }
+
+  function sizeCanvas() {
+    // Keep the same track and dimensions while playing, including in PiP.
+    // A later source aspect change is letterboxed, never stretched or cropped.
+    if (stream || !image) return;
+    const scale = Math.min(1, 1920 / image.naturalWidth, 1920 / image.naturalHeight);
+    const width = Math.max(2, Math.ceil(image.naturalWidth * scale / 2) * 2);
+    frameAreaHeight = Math.max(2, Math.ceil(image.naturalHeight * scale / 2) * 2);
+    footerHeight = Math.max(32, Math.ceil(width * 0.145 / 2) * 2);
+    const height = frameAreaHeight + footerHeight;
+    if (canvas.width !== width || canvas.height !== height) {
+      canvas.width = width;
+      canvas.height = height;
+      lastPaint = '';
+    }
+  }
+
+  function paint(force = false) {
+    if (!ctx || !image || disposed) return;
+    const now = Date.now();
+    const time = sourceTime || receivedAt;
+    const seconds = Math.max(0, Math.floor((now - time) / 1000));
+    const signature = [version, updates, Math.floor(now / 1000), state,
+      statusText, document.hidden, video.paused, active].join('|');
+    if (!force && signature === lastPaint) return;
+    lastPaint = signature;
+    const width = canvas.width;
+    ctx.fillStyle = '#020304';
+    ctx.fillRect(0, 0, width, canvas.height);
+    const scale = Math.min(width / image.naturalWidth, frameAreaHeight / image.naturalHeight);
+    const drawWidth = image.naturalWidth * scale;
+    const drawHeight = image.naturalHeight * scale;
+    ctx.drawImage(image, (width - drawWidth) / 2,
+      (frameAreaHeight - drawHeight) / 2, drawWidth, drawHeight);
+
+    let label = statusText;
+    let color = colors[state] || colors.warning;
+    if (!navigator.onLine) {
+      label = 'Disconnected · device offline';
+      color = colors.error;
+    } else if (state === 'live' && seconds > 15) {
+      label = `Disconnected · ${seconds}s without an update`;
+      color = colors.error;
+    } else if (state === 'live' && seconds > 5) {
+      label = `Interrupted · ${seconds}s without an update`;
+      color = colors.warning;
+    } else if (document.hidden && state === 'live') {
+      // This warning stays in the last frame even if iOS freezes JavaScript.
+      label = 'Background · check update time';
+      color = colors.warning;
+    }
+    const pad = width * 0.022;
+    const firstY = frameAreaHeight + footerHeight * 0.32;
+    const secondY = frameAreaHeight + footerHeight * 0.73;
+    ctx.fillStyle = '#10151e';
+    ctx.fillRect(0, frameAreaHeight, width, footerHeight);
+    ctx.fillStyle = now - receivedAt < 750 ? '#45d483' : '#293442';
+    ctx.fillRect(0, frameAreaHeight, width, Math.max(2, width * 0.003));
+    ctx.textBaseline = 'middle';
+    ctx.textAlign = 'left';
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.arc(pad + width * 0.006, firstY, width * 0.006, 0, Math.PI * 2);
+    ctx.fill();
+    fitText(label, pad + width * 0.024, firstY, width * 0.79, width * 0.033, color);
+    ctx.textAlign = 'right';
+    fitText(`#${updates}`, width - pad, firstY, width * 0.11, width * 0.031, '#a5adb7');
+    ctx.textAlign = 'left';
+    const date = new Date(time);
+    const datePrefix = date.toDateString() === new Date(now).toDateString()
+      ? '' : `${day.format(date)} `;
+    let age = seconds < 60 ? `${seconds}s ago`
+      : seconds < 3600 ? `${Math.floor(seconds / 60)}m ago`
+      : seconds < 86400 ? `${Math.floor(seconds / 3600)}h ago`
+      : `${Math.floor(seconds / 86400)}d ago`;
+    if (time > now + 5000) age = 'publisher clock ahead';
+    const stamp = `${sourceTime ? 'Updated' : 'Received'} ${datePrefix}${clock.format(date)} · ${age}`;
+    fitText(stamp, pad, secondY, width - pad * 2, width * 0.044, '#f5f7fa');
+    canvas.setAttribute('aria-label', `UCB Eyes. ${label}. ${stamp}. Update ${updates}.`);
+    // Feature-detect: Safari versions do not all expose requestFrame().
+    const track = stream?.getVideoTracks()[0];
+    if (track?.readyState === 'live' && typeof track.requestFrame === 'function') {
+      try { track.requestFrame(); } catch { /* Automatic capture remains enabled. */ }
+    }
+  }
+
+  function stopStream() {
+    const old = stream;
+    stream = null;
+    video.pause();
+    video.srcObject = null;
+    old?.getTracks().forEach(track => track.stop());
+    video.classList.remove('visible');
+  }
+
+  function prepareVideo() {
+    if (disposed || !image) return false;
+    if (!ctx) {
+      streamError = 'This browser cannot create the video canvas. The original live image viewer is still available.';
+      return false;
+    }
+    if (stream?.getVideoTracks().some(track => track.readyState === 'live')) return true;
+    if (stream) stopStream();
+    if (typeof canvas.captureStream !== 'function') {
+      streamError = 'This browser cannot make a video from the live frames. The regular viewer and update footer still work.';
+      return false;
+    }
+    try {
+      sizeCanvas();
+      paint(true);
+      stream = canvas.captureStream(2);
+      if (!stream.getVideoTracks().length) throw new Error('No canvas video track');
+      video.srcObject = stream;
+      // Draw again AFTER capture starts; some engines need a fresh canvas frame.
+      paint(true);
+      const play = video.play();
+      play?.catch(() => { /* A real tap on PiP will retry playback. */ });
+      captureFailed = false;
+      streamError = '';
+      return true;
+    } catch (error) {
+      console.warn('Mini player preparation failed:', error);
+      stopStream();
+      captureFailed = true;
+      streamError = 'The browser could not prepare the mini player. Tap PiP to retry; the regular viewer is still available.';
+      return false;
+    }
+  }
+
+  function syncPresentation() {
+    const next = isActive();
+    clearTimeout(pendingTimer);
+    pending = false;
+    button.removeAttribute('aria-busy');
+    button.setAttribute('aria-pressed', String(next));
+    button.setAttribute('aria-label', next ? 'Return mini player to webpage' : 'Open mini player, Picture in Picture');
+    if (next && !active) {
+      showNotice('Mini player opened. You can switch apps now. Keep this tab open. iOS may pause background updates, so check the time inside the video.', 12000);
+    }
+    active = next;
+    paint(true);
+  }
+
+  async function togglePiP(event) {
+    event.stopPropagation();
+    if (pending) return;
+    if (isActive()) {
+      try {
+        if (document.pictureInPictureElement === video && document.exitPictureInPicture) {
+          await document.exitPictureInPicture();
+        } else video.webkitSetPresentationMode('inline');
+        syncPresentation();
+      } catch (error) {
+        showNotice(`Use the mini player's return button to close it. ${error.message || ''}`);
+      }
+      return;
+    }
+    if (!image) {
+      showNotice('Wait for the first live frame, then tap PiP.');
+      return;
+    }
+    if (!hasPiPAPI()) {
+      showNotice('This browser does not offer native Picture in Picture here. On iPhone, open this page directly in Safari rather than an in-app browser.', 0);
+      return;
+    }
+    if (!prepareVideo()) {
+      showNotice(streamError, 0);
+      return;
+    }
+    const play = video.play();
+    play?.catch(() => {
+      showNotice('Safari paused video playback. Keep this page visible and tap PiP again.', 0);
+    });
+    if (video.readyState < 2 || !video.videoWidth) {
+      showNotice('The video is starting. Tap PiP again once it is ready.');
+      return;
+    }
+    // Do not await play(), a timer, or network work before requesting PiP.
+    // The Safari request must retain the actual button's user activation.
+    try {
+      pending = true;
+      button.setAttribute('aria-busy', 'true');
+      let safariAllowed = false;
+      if (typeof video.webkitSetPresentationMode === 'function') {
+        safariAllowed = typeof video.webkitSupportsPresentationMode !== 'function' ||
+          video.webkitSupportsPresentationMode('picture-in-picture');
+      }
+      if (safariAllowed) {
+        video.webkitSetPresentationMode('picture-in-picture');
+        if (isActive()) syncPresentation();
+        else pendingTimer = setTimeout(() => {
+          syncPresentation();
+          if (!isActive()) showNotice('Safari did not open the mini player for this generated video. Keep the page open and try again. Background playback may require a true streamed video source.', 0);
+        }, 1800);
+      } else if (document.pictureInPictureEnabled && typeof video.requestPictureInPicture === 'function') {
+        await video.requestPictureInPicture();
+        syncPresentation();
+      } else {
+        throw new Error('Safari does not allow PiP for this generated video on this device.');
+      }
+    } catch (error) {
+      syncPresentation();
+      console.warn('Picture in Picture unavailable:', error);
+      showNotice(`Mini player unavailable. ${error.message || 'The browser rejected Picture in Picture.'} The regular viewer still works.`, 0);
+    }
+  }
+
+  button.addEventListener('click', togglePiP);
+  video.addEventListener('enterpictureinpicture', syncPresentation);
+  video.addEventListener('leavepictureinpicture', syncPresentation);
+  video.addEventListener('webkitpresentationmodechanged', syncPresentation);
+  video.addEventListener('playing', () => {
+    video.classList.add('visible');
+    paint(true);
+  });
+  video.addEventListener('pause', () => {
+    // Do not fight the user's native pause control. Show the fresh canvas inline.
+    video.classList.remove('visible');
+  });
+  video.addEventListener('error', () => {
+    video.classList.remove('visible');
+    captureFailed = true;
+    stopStream();
+    showNotice('The mini-player video stopped. The normal live viewer is still available; tap PiP to retry.', 0);
+  });
+
+  function resume() {
+    if (disposed || document.hidden) return;
+    paint(true);
+    if (image && hasPiPAPI() && !captureFailed) prepareVideo();
+    if (typeof onResume === 'function') {
+      Promise.resolve().then(onResume).catch(error => console.warn('Feed refresh:', error));
+    }
+  }
+  document.addEventListener('visibilitychange', () => {
+    paint(true);
+    if (!document.hidden) resume();
+    // Intentionally keep the subscription and track on ordinary app switches.
+  });
+  window.addEventListener('online', resume);
+  window.addEventListener('pageshow', resume);
+  window.addEventListener('pagehide', event => {
+    paint(true);
+    // A tab retained in back/forward cache can resume its existing player.
+    if (!event.persisted) {
+      disposed = true;
+      clearInterval(repaintTimer);
+      clearTimeout(noticeTimer);
+      clearTimeout(pendingTimer);
+      stopStream();
+    }
+  });
+  // Do not depend on requestAnimationFrame: it often stops in hidden pages.
+  // This timer is still best-effort; it does NOT bypass iOS suspension.
+  repaintTimer = setInterval(() => paint(), 500);
+
+  return {
+    get frameTime() { return sourceTime || receivedAt; },
+    setStatus(nextState, text) {
+      state = nextState;
+      statusText = text;
+      paint(true);
+    },
+    setFrame(decodedImage, metadata, displayedAt) {
+      if (disposed) return;
+      image = decodedImage;
+      const nextVersion = String(metadata.version || '');
+      if (nextVersion !== version || !updates) updates += 1;
+      version = nextVersion;
+      receivedAt = displayedAt;
+      sourceTime = timestamp(metadata.updatedAt);
+      if (!ctx) return;
+      sizeCanvas();
+      paint(true);
+      canvas.classList.add('visible');
+      parent.classList.add('has-composite');
+      frame.setAttribute('aria-hidden', 'true');
+      if (!stream && hasPiPAPI() && !captureFailed) prepareVideo();
+    }
+  };
+}
+
     setInterval(updateConnectionAge, 1000);
 
     try {
@@ -732,6 +1204,7 @@
       startListener();
     } catch (error) {
       console.error(error);
+      connectionError = "Authentication failed";
       setStatus("error", "Authentication failed");
       setPlaceholder(
         "Authentication failed",
