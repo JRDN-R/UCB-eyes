@@ -459,16 +459,16 @@
         return;
       }
 
-      // Prefer the publisher's timestamp; reopening an old frame is not a new update.
-      const frameTime = Math.min(miniPlayer.frameTime || lastDisplayedAt, lastDisplayedAt);
-      const seconds = Math.max(0, Math.floor((Date.now() - frameTime) / 1000));
+      // Measure incoming frame activity on this device. The publisher's
+      // updatedAt field can be stale or use a different clock.
+      const seconds = Math.max(0, Math.floor((Date.now() - lastDisplayedAt) / 1000));
 
       if (seconds > 15) {
         setStatus("error", `Disconnected · ${seconds}s without a frame`);
       } else if (seconds > 5) {
         setStatus("warning", `Interrupted · ${seconds}s without a frame`);
       } else {
-        setStatus("live", "Connected · 1 FPS");
+        setStatus("live", "Connected · frame received");
       }
     }
 
@@ -527,7 +527,7 @@
           return;
         }
 
-        if (await displayFrame(dataUrl, metadata)) currentVersion = version;
+        await displayFrame(dataUrl, metadata);
       } catch (error) {
         if (String(latestMetadata?.version || "") !== version) return;
         if (attempt < 8) {
@@ -560,8 +560,10 @@
         const preload = new Image();
 
         preload.onload = () => {
-          // A newer update may have arrived while this image was decoding.
-          if (String(latestMetadata?.version || "") !== String(metadata.version || "")) {
+          // A newer update or another decode of this version may have finished.
+          const version = String(metadata.version || "");
+          if (!version || String(latestMetadata?.version || "") !== version ||
+              currentVersion === version) {
             resolve(false);
             return;
           }
@@ -570,8 +572,9 @@
           frame.classList.add("visible");
           ambient.classList.add("visible");
           setPlaceholder("", "", false);
-          lastDisplayedAt = Date.now();
-          miniPlayer.setFrame(preload, metadata, lastDisplayedAt);
+          miniPlayer.setFrame(preload, metadata, Date.now());
+          lastDisplayedAt = miniPlayer.frameTime;
+          currentVersion = version;
           updateConnectionAge();
           resolve(true);
         };
@@ -851,7 +854,6 @@ function createMiniPlayer({ frame, onResume }) {
   let version = '';
   let updates = 0;
   let receivedAt = 0;
-  let sourceTime = 0;
   let state = 'warning';
   let statusText = 'Waiting for feed';
   let stream = null;
@@ -866,25 +868,6 @@ function createMiniPlayer({ frame, onResume }) {
   let frameAreaHeight = 0;
   let footerHeight = 0;
   let repaintTimer = 0;
-
-  function timestamp(value) {
-    let time = 0;
-    try {
-      if (value && typeof value.toMillis === 'function') time = value.toMillis();
-      else if (value instanceof Date) time = value.getTime();
-      else if (value && typeof value === 'object' && Number.isFinite(value.seconds)) {
-        time = value.seconds * 1000 + (Number(value.nanoseconds) || 0) / 1e6;
-      } else if (typeof value === 'number' && Number.isFinite(value)) {
-        time = value < 1e11 ? value * 1000 : value;
-      } else if (typeof value === 'string' && value.trim()) {
-        const numeric = Number(value);
-        time = Number.isFinite(numeric)
-          ? (numeric < 1e11 ? numeric * 1000 : numeric)
-          : Date.parse(value);
-      }
-    } catch { /* Unknown publisher timestamp: label the local receipt instead. */ }
-    return Number.isFinite(time) && time > 0 && time <= 8.64e15 ? time : 0;
-  }
 
   function showNotice(text, duration = 9000) {
     clearTimeout(noticeTimer);
@@ -934,7 +917,7 @@ function createMiniPlayer({ frame, onResume }) {
   function paint(force = false) {
     if (!ctx || !image || disposed) return;
     const now = Date.now();
-    const time = sourceTime || receivedAt;
+    const time = receivedAt;
     const seconds = Math.max(0, Math.floor((now - time) / 1000));
     const signature = [version, updates, Math.floor(now / 1000), state,
       statusText, document.hidden, video.paused, active].join('|');
@@ -985,12 +968,11 @@ function createMiniPlayer({ frame, onResume }) {
     const date = new Date(time);
     const datePrefix = date.toDateString() === new Date(now).toDateString()
       ? '' : `${day.format(date)} `;
-    let age = seconds < 60 ? `${seconds}s ago`
+    const age = seconds < 60 ? `${seconds}s ago`
       : seconds < 3600 ? `${Math.floor(seconds / 60)}m ago`
       : seconds < 86400 ? `${Math.floor(seconds / 3600)}h ago`
       : `${Math.floor(seconds / 86400)}d ago`;
-    if (time > now + 5000) age = 'publisher clock ahead';
-    const stamp = `${sourceTime ? 'Updated' : 'Received'} ${datePrefix}${clock.format(date)} · ${age}`;
+    const stamp = `Received ${datePrefix}${clock.format(date)} · ${age}`;
     fitText(stamp, pad, secondY, width - pad * 2, width * 0.044, '#f5f7fa');
     canvas.setAttribute('aria-label', `UCB Eyes. ${label}. ${stamp}. Update ${updates}.`);
     // Feature-detect: Safari versions do not all expose requestFrame().
@@ -1171,7 +1153,7 @@ function createMiniPlayer({ frame, onResume }) {
   repaintTimer = setInterval(() => paint(), 500);
 
   return {
-    get frameTime() { return sourceTime || receivedAt; },
+    get frameTime() { return receivedAt; },
     setStatus(nextState, text) {
       state = nextState;
       statusText = text;
@@ -1179,12 +1161,14 @@ function createMiniPlayer({ frame, onResume }) {
     },
     setFrame(decodedImage, metadata, displayedAt) {
       if (disposed) return;
-      image = decodedImage;
       const nextVersion = String(metadata.version || '');
-      if (nextVersion !== version || !updates) updates += 1;
+      // Retries/reconnects of the same frame must not reset its receipt time.
+      if (!nextVersion || (nextVersion === version && updates)) return;
+      image = decodedImage;
+      updates += 1;
       version = nextVersion;
+      // Receipt time describes this displayed frame, not the publisher's clock.
       receivedAt = displayedAt;
-      sourceTime = timestamp(metadata.updatedAt);
       if (!ctx) return;
       sizeCanvas();
       paint(true);
