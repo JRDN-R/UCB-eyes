@@ -1,0 +1,23 @@
+<!doctype html><html><head><meta charset="utf-8"><title>Synthetic UCB test</title></head><body>
+<div id="view"></div>
+<script src="../ucb-core.js"></script><script src="../controls-core.js"></script><script src="../ucb-click-flow.js"></script>
+<script>
+window.fixture={clicks:[],current:'1001',wrong:false,noContinue:false,noVerify:false,delayed:0};
+const row=()=>Object.fromEntries(UcbEyesCore.KEYS.map(k=>[k,({status:'Accept',callId:'1001',workOrder:'00001001',aircraft:'DEMO-01',remarks:'EXAMPLE ONLY.'})[k]||'']));
+fixture.rows=[row()];
+fixture.report=()=>{document.getElementById('view').innerHTML=`<table><tr><td id="call-request-display-facility">JAX</td><td id="call-request-display-program">TRAINERS</td></tr></table><div id="responseTableContainer"><table class="ucb-report-table"><thead><tr><th>E&amp;E Outstanding Report</th></tr></thead><tbody><tr cst_row_index="0">${UcbEyesCore.KEYS.slice(0,10).map((k,i)=>`<td customindex="${i}">${i===0?'<span class="staticlinkblue" usertext="Accept">Accept</span>':fixture.rows[0][k]}</td>`).join('')}</tr><tr cst_row_index="0"><td customindex="10">Responses</td><td customindex="11">EXAMPLE ONLY.</td></tr></tbody></table></div><div class="tableBtns"><span><button class="gwt-Button">Print</button><button class="gwt-Button" onclick="fixture.clicks.push(['WRONG_RETURN',Date.now()])">Return</button></span></div>`;
+ document.querySelector('[usertext="Accept"]').onclick=()=>{fixture.clicks.push(['accept',Date.now()]);setTimeout(fixture.details,fixture.delayed);};
+};
+fixture.details=()=>{document.getElementById('view').innerHTML=`<table><tr><td class="tblLeft">Call ID:</td><td class="tblRight"><span>${fixture.wrong?'9999':'1001'}</span></td></tr></table><div class="tableBtns"><span>${['Send To P&E','Request Part','View Responses','Add Response','Return'].map(s=>`<button class="gwt-Button">${s}</button>`).join('')}</span></div><div hidden><div class="tableBtns"><button class="gwt-Button">Return</button></div></div>`;
+ const buttons=[...document.querySelectorAll('.tableBtns button')];buttons.find(b=>b.textContent==='Return').onclick=()=>{fixture.clicks.push(['return',Date.now()]);setTimeout(fixture.menu,fixture.delayed);};
+};
+fixture.menu=()=>{document.getElementById('view').innerHTML=fixture.noContinue?'<div>No expected toolbar</div>':'<div class="tableBtns"><span><button class="gwt-Button">Continue</button><button class="gwt-Button">Cancel</button></span></div>';
+ const b=[...document.querySelectorAll('button')].find(b=>b.textContent==='Continue');if(b)b.onclick=()=>{fixture.clicks.push(['continue',Date.now()]);if(!fixture.noVerify){fixture.rows[0].status='Inwork';fixture.rows[0].examiner='EXAMPLE EXAMINER';fixture.rows[0].inWorkDate='10/13/2026 01:26 PM';}fixture.report();};
+};
+fixture.command=async()=>{const now=Date.now();return {id:crypto.randomUUID(),session:crypto.randomUUID(),type:'accept',callId:'1001',workOrder:'00001001',aircraft:'DEMO-01',fingerprint:await UcbControlCore.rowFingerprint(fixture.rows[0]),issuedAt:now,expiresAt:now+30000};};
+fixture.run=async(options={})=>{const command=await fixture.command();const {command:overrides,...runOptions}=options;Object.assign(command,overrides||{});fixture.guardCount=0;
+ try{const result=await UcbClickFlow.run({doc:document,command,actor:'EXAMPLE EXAMINER',core:UcbEyesCore,protocol:UcbControlCore,
+ readReport:async()=>UcbEyesCore.snapshot(fixture.rows,'rpc'),guard:()=>{fixture.guardCount++;if(options.guardFail&&fixture.guardCount>options.guardFail)throw Error('Session changed');},
+ ...runOptions});return {ok:true,status:result.row.status,clicks:fixture.clicks};}catch(e){return {ok:false,message:e.message,didClick:e.didClick,step:e.step,clicks:fixture.clicks};}};
+fixture.report();
+</script></body></html>

@@ -87,6 +87,7 @@
       const update = (id, value) => { if ($(id).textContent !== String(value)) $(id).textContent = value; };
       update('countAll', this.rows.length); update('countAccept', accepts); update('countInwork', inwork);
       update('resultCount', this.hasData ? `${shown} request${shown === 1 ? '' : 's'}` : '');
+      this.onRender?.();
       $('empty').hidden = this.hasData && shown > 0;
       $('pairButton').hidden = this.hasData;
       if (this.hasData) {
