@@ -1,10 +1,9 @@
 import './ucb-core.js';
-import './board.js';
-import { ViewerControls } from './viewer-controls.js?v=controls-1';
+import './view-model.js?v=compact-3';
+import './board.js?v=compact-3';
 const C = globalThis.UcbEyesCore;
 const $ = id => document.getElementById(id);
 const board = new globalThis.UcbEyesBoard();
-const controls = new ViewerControls(board);
 const firebaseConfig = {
   apiKey: 'AIzaSyCtz99nbMN9caeFRnSct6NeugepWQORqvM',
   authDomain: 'ucb-eyes.firebaseapp.com', projectId: 'ucb-eyes',
@@ -33,7 +32,6 @@ function health() {
   if (!code) { state('waiting', 'Not paired'); return; }
   if (!navigator.onLine) { state('error', 'Offline'); notice('You are offline. The last report remains readable.'); return; }
   if (errorMessage) { state('error', 'Not connected'); notice(errorMessage); return; }
-  if (controls.busy) { state('waiting', 'Processing call'); notice('The source computer is processing a selected call. The report updates after verification.'); return; }
   if (feedNotice) { state('waiting', 'Waiting for text'); notice(feedNotice); return; }
   if (!lastReceived) { state('waiting', 'Waiting for sender'); return; }
   const age = Math.max(Date.now() - lastReceived, sourcePublished ? Date.now() - sourcePublished : 0);
@@ -50,7 +48,6 @@ function received(meta, receiptTime) {
   setText('receivedTime', clock.format(lastReceived));
   $('receivedTime').dateTime = new Date(lastReceived).toISOString();
   $('receivedTime').title = new Date(lastReceived).toLocaleString();
-  controls.received(lastReceived);
   errorMessage = ''; health();
 }
 async function firebaseServices() {
@@ -77,7 +74,7 @@ function friendlyError(error) {
 async function connect(input) {
   const newCode = C.pairingCode(input), newKey = await C.importKey(newCode);
   const myGeneration = ++generation;
-  unsubscribe?.(); refresh = null; controls.stop();
+  unsubscribe?.(); refresh = null;
   code = newCode; key = newKey; isDemo = false;
   currentVersion = ''; lastReceived = 0; sourcePublished = 0; lastStamp = 0; errorMessage = ''; feedNotice = '';
   board.clear(); setText('receivedTime', '—'); notice(''); health();
@@ -85,7 +82,6 @@ async function connect(input) {
   $('copyLink').disabled = false; $('forgetDevice').disabled = false;
   const { fs, db } = await firebaseServices();
   if (myGeneration !== generation) return;
-  await controls.start({ fs, db }, newKey);
   const currentRef = fs.doc(db, 'live_capture', 'current');
   const chunkRef = fs.doc(db, 'live_capture', 'current_chunk_0');
   let latest = null, processing = false, listening = false;
@@ -181,15 +177,14 @@ $('forgetDevice').addEventListener('click', () => {
   code = ''; key = null; lastReceived = 0; currentVersion = ''; lastStamp = 0; errorMessage = ''; feedNotice = ''; isDemo = false;
   try { sessionStorage.removeItem('ucb-eyes-viewer-key-v1'); } catch {}
   history.replaceState(null, '', location.pathname);
-  controls.forget();
   board.clear(); $('pairCode').value = ''; $('copyLink').disabled = true; $('forgetDevice').disabled = true;
   setText('receivedTime', '—'); notice(''); health(); globalThis.ucbToast('This device is no longer paired.');
 });
 $('copySender').addEventListener('click', async () => {
   try {
-    const responses = await Promise.all(['./console-sender.js','./console-controls.js'].map(url=>fetch(url,{cache:'no-store'})));
-    if(responses.some(r=>!r.ok)) throw new Error('Download failed');
-    const script = (await Promise.all(responses.map(r=>r.text()))).join('\n');
+    const response = await fetch('./console-sender.js', { cache: 'no-store' });
+    if (!response.ok) throw new Error('Download failed');
+    const script = await response.text();
     try { await navigator.clipboard.writeText(script); globalThis.ucbToast('Console script copied. Paste it in the UCB top Console.'); }
     catch { $('scriptFallback').value = script; $('scriptFallback').hidden = false; $('scriptFallback').focus(); $('scriptFallback').select(); }
   } catch { globalThis.ucbToast('Use Download script below the copy button.'); }

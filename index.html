@@ -10,7 +10,7 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <title>UCB Eyes · E&E Outstanding</title>
-  <link rel="stylesheet" href="styles.css?v=controls-1">
+  <link rel="stylesheet" href="styles.css?v=compact-3">
 </head>
 <body>
   <div class="shell">
@@ -29,46 +29,42 @@
       </section>
       <section class="tools" aria-label="Filter requests">
         <label class="search"><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 4.5 4.5"/></svg><input id="search" type="search" placeholder="Aircraft, work order, name…" aria-label="Search requests" autocomplete="off"></label>
-        <div class="filter-line"><div class="filters" role="group" aria-label="Request status"><button type="button" data-filter="all" aria-pressed="true">All <span id="countAll">0</span></button><button type="button" data-filter="accept" aria-pressed="false">Accept <span id="countAccept">0</span></button><button type="button" data-filter="inwork" aria-pressed="false">Inwork <span id="countInwork">0</span></button></div><span id="resultCount" class="result-count"></span></div>
+        <div class="filter-line"><div class="filters" role="group" aria-label="Request status"><button type="button" data-filter="all" aria-pressed="true">All <span id="countAll">0</span></button><button type="button" data-filter="accept" aria-pressed="false">Accept <span id="countAccept">0</span></button><button type="button" data-filter="inwork" aria-pressed="false">Inwork <span id="countInwork">0</span></button></div></div>
+        <div class="trade-line"><label class="trade-control" for="tradeView">Trade
+          <select id="tradeView" aria-label="Trade order and filter">
+            <option value="priority" selected>Metals + Paint first</option>
+            <option value="only">Metals + Paint only</option>
+            <option value="all">All trades · original order</option>
+          </select>
+        </label><span id="resultCount" class="result-count"></span></div>
       </section>
       <p id="notice" class="notice" role="status" hidden></p>
       <div id="pendingNotice" class="notice selection-notice" hidden>New data is ready. Your text selection is preserved. <button type="button" id="applyUpdate">Apply update</button></div>
-      <p id="actionNotice" class="notice action-notice" role="status" hidden></p>
       <section id="cards" class="cards" aria-label="Outstanding requests"></section>
       <section id="empty" class="empty"><div class="empty-icon" aria-hidden="true">↗</div><h2 id="emptyTitle">Your call board, readable.</h2><p id="emptyText">Connect the UCB console sender to see live requests here. Text stays selectable, including work orders and remarks.</p><button class="primary" id="pairButton" type="button">Pair this device</button></section>
     </main>
-    <footer><span>Viewing by default · Controls require approval</span><span>UCB eyes <span class="footer-separator">·</span> Text edition</span></footer>
+    <footer><span>Read-only view</span><span>UCB eyes <span class="footer-separator">·</span> Text edition</span></footer>
   </div>
   <dialog id="settingsDialog" aria-labelledby="settingsTitle">
     <div class="dialog-heading"><div><p class="eyebrow">UCB EYES</p><h2 id="settingsTitle">Connect your call board.</h2></div><button class="icon-button" id="closeSettings" aria-label="Close settings" type="button">×</button></div>
     <p class="dialog-copy">Run the sender in the UCB report’s <strong>top</strong> Console. Paste its pairing code or private viewer link below.</p>
     <form id="pairForm"><label class="field-label" for="pairCode">Pairing code or private link</label><input id="pairCode" type="password" autocomplete="off" autocapitalize="none" spellcheck="false" placeholder="Paste from the console sender" required><p id="pairError" class="form-error" role="alert"></p><button class="primary" type="submit">Connect</button></form>
     <div class="settings-actions"><button class="secondary" id="copyLink" type="button" disabled>Copy private viewer link</button><button class="secondary" id="forgetDevice" type="button" disabled>Forget this device</button></div>
-    <div class="sender-section"><h3>Accept calls</h3>
-      <p id="controlState">Controls are off. Viewing access does not grant permission to accept calls.</p>
-      <button class="secondary" id="generateControl" type="button">Create control code</button>
-      <div id="controlCodeWrap" hidden><label class="field-label" for="controlCode">PRIVATE CONTROL CODE · NOT THE VIEWING CODE</label><input id="controlCode" type="password" readonly autocomplete="off" spellcheck="false"><button class="secondary" id="copyControl" type="button">Copy control code</button></div>
-      <p>On the source PC, run the updated console script. Then enter <code>__UCB_EYES_CONTROLS__.enable()</code> in the Console and paste this separate control code into its prompt. Approval lasts up to 8 hours.</p>
-      <p>Each confirmed call runs Accept → 2 seconds → Return → 1 second → Continue. Stop controls on the PC with <code>__UCB_EYES_CONTROLS__.disable()</code>.</p>
-      <button class="secondary" id="clearPending" type="button" hidden>I checked UCB. Clear pending request</button>
-    </div>
-    <div class="sender-section"><h3>On the source computer</h3><p>Stop the screen-capture sender. Open the E&E Outstanding report, choose DevTools → Console → <strong>top</strong>, then paste the full script.</p><button class="secondary" id="copySender" type="button">Copy console script</button><a class="text-link" href="console-sender.js" download="UCB-Eyes-Console-Sender.txt">Download read-only sender</a> <a class="text-link" href="console-controls.js" download="UCB-Eyes-Console-Controls.txt">Download optional controls</a><textarea id="scriptFallback" aria-label="Console sender script; select all and copy" readonly hidden></textarea></div>
+    <div class="sender-section"><h3>On the source computer</h3><p>Stop the screen-capture sender. Open the E&E Outstanding report, choose DevTools → Console → <strong>top</strong>, then paste the full script.</p><button class="secondary" id="copySender" type="button">Copy console script</button><a class="text-link" href="console-sender.js" download="UCB-Eyes-Console-Sender.txt">Download script</a><textarea id="scriptFallback" aria-label="Console sender script; select all and copy" readonly hidden></textarea></div>
     <p class="privacy-note">Only use approved destinations and devices for this information. The pairing link is private. It decrypts the text feed; anonymous Firebase access alone does not identify or authorize a person.</p>
     <a class="text-link legacy-link" href="screen.html">Original screen viewer ↗</a>
   </dialog>
-  <dialog id="acceptDialog" aria-labelledby="acceptTitle"><p class="eyebrow">UCB ACTION</p><h2 id="acceptTitle">Accept this call?</h2><p id="acceptSummary" class="accept-summary"></p><p id="acceptActor" class="dialog-copy"></p><p class="dialog-copy">The source computer completes Return and Continue automatically, then checks UCB. This accepts the call only; it does not certify work or close a work order.</p><div class="confirm-actions"><button id="cancelAccept" class="secondary" type="button">Cancel</button><button id="confirmAccept" class="primary" type="button">Accept call</button></div></dialog>
   <div class="toast" id="toast" role="status" hidden></div>
   <template id="cardTemplate">
     <article class="request-card">
-      <div class="card-heading"><h2 data-field="aircraft"></h2><span class="badge" data-field="status"></span></div>
-      <div class="work-order"><div><span class="field-label">WORK ORDER</span><div class="order-number" data-field="workOrder"></div></div><button class="copy-order icon-button" type="button" aria-label="Copy work order"><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h3"/></svg></button></div>
+      <div class="card-heading"><h2 data-field="aircraft"></h2><span class="badge" data-field="status"></span><span class="trade-tag" data-field="trade"></span></div>
+      <div class="work-order"><div class="work-number"><span class="field-label">WO</span><span class="order-number" data-field="workOrder"></span></div><button class="copy-order icon-button" type="button" aria-label="Copy work order"><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h3"/></svg></button></div>
       <p class="remarks" data-field="remarks"></p>
       <dl class="people"><div><dt>Certifier</dt><dd data-field="certifier"></dd></div><div><dt>E&E</dt><dd data-field="examiner"></dd></div></dl>
-      <div class="call-actions" hidden><button class="accept-call secondary" type="button" disabled>Accept call</button><span class="action-note"></span></div>
-      <details class="call-details"><summary><span>Call <span data-field="callId"></span></span><span class="detail-summary">Details <span aria-hidden="true">⌄</span></span></summary><dl class="detail-grid"><div><dt>Trade</dt><dd data-field="trade"></dd></div><div><dt>Planner</dt><dd data-field="planner"></dd></div><div class="full"><dt>Request date</dt><dd data-field="requestDate"></dd></div><div class="full"><dt>In work date</dt><dd data-field="inWorkDate"></dd></div><div class="full"><dt data-field="responses"></dt><dd class="muted">Read response history in UCB.</dd></div></dl></details>
+      <details class="call-details"><summary><span>Call <span data-field="callId"></span></span><span class="detail-summary">More · full remarks <span aria-hidden="true">⌄</span></span></summary><dl class="detail-grid"><div><dt>Trade</dt><dd data-field="trade"></dd></div><div><dt>Planner</dt><dd data-field="planner"></dd></div><div class="full"><dt>Request date</dt><dd data-field="requestDate"></dd></div><div class="full"><dt>In work date</dt><dd data-field="inWorkDate"></dd></div><div class="full"><dt data-field="responses"></dt><dd class="muted">Read response history in UCB.</dd></div></dl></details>
     </article>
   </template>
   <noscript><p class="notice">JavaScript is required to receive the live text feed.</p></noscript>
-  <script type="module" src="viewer.js?v=controls-1"></script>
+  <script type="module" src="viewer.js?v=compact-3"></script>
 </body>
 </html>
