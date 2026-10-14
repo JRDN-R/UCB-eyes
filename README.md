@@ -4,6 +4,14 @@ A mobile-first, strictly read-only E&E Outstanding report viewer with compact, s
 
 ## Start the feed
 
+**If you previously installed the old remote Accept add-on:** In the *existing*
+UCB DevTools Console, run `window.__UCB_EYES_CONTROLS__?.stop()` to terminate
+that in-memory add-on. The read-only sender can keep running independently.
+The current website no longer includes any controls code, Accept buttons, or
+remote command endpoints. Updating GitHub cannot stop an already-running script
+in another browser, so this one-time cleanup matters.
+
+
 1. Stop the old screen-capture publisher. On the source computer, open **JAX → TRAINERS → E&E → Outstanding** in the existing, authenticated UCB session.
 2. Open DevTools → **Console**, choose **top**, and paste the complete contents of **[console-sender.js](console-sender.js)**. The viewer's Settings → **Copy console script** copies the same standalone script. No extension, local server, remote code loader or installation is required for the sender.
 3. Read the destination confirmation. Enter an existing pairing code, or leave the prompt blank to generate one. Open the **private iPhone viewer link** printed in the console on your approved mobile device. Alternatively, open the viewer and paste the pairing code into Settings.
