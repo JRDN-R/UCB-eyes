@@ -7,17 +7,21 @@ const path = require('node:path');
 const core = require('../ucb-core.js');
 const source = fs.readFileSync(path.join(__dirname, '../src/sender.js'), 'utf8');
 const settle = async () => { for (let i = 0; i < 20; i++) await new Promise(resolve => setTimeout(resolve, 2)); };
-function harness() {
-  const calls = [], timers = new Map(); let nextTimer = 0, savedDoc = null, sourceFailure = false;
+function harness(previousKey = null) {
+  const calls = [], timers = new Map(), logs = [], stored = new Map();
+  if (previousKey !== null) stored.set('ucb-eyes-sender-key-v1', previousKey);
+  let nextTimer = 0, savedDoc = null, sourceFailure = false;
   const row = Object.fromEntries(core.KEYS.map(k => [k, ({ callId: '1001', aircraft: 'DEMO-01', workOrder: '00001001', status: 'Inwork', remarks: 'EXAMPLE ONLY.' })[k] || '']));
   const C = { ...core, reportContext: () => true, parseReport: () => ({ rows: [row], total: 1 }) };
   const win = { UcbEyesCore: C, isSecureContext: true, crypto: globalThis.crypto, URL, URLSearchParams, AbortController,
-    TextEncoder, TextDecoder, btoa, atob, Set, Map, Date, Uint8Array, console: { info() {}, warn() {}, error() {} },
+    TextEncoder, TextDecoder, btoa, atob, Set, Map, Date, Uint8Array,
+    console: { info: message => logs.push(String(message)), warn() {}, error() {} },
     document: { scripts: [{ src: 'https://ucb.example.test/Ucb/5F3D96C6EB4F757767F1A4D73FF240A0.cache.js' }] },
     location: { origin: 'https://ucb.example.test', protocol: 'https:' }, frames: [], closed: false,
     keycloak: { authenticated: true, token: 'LOCAL_UCB_TOKEN_ONLY' },
-    confirm: () => true, prompt: () => 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA',
-    sessionStorage: { getItem: () => null, setItem() {} }, addEventListener() {}, removeEventListener() {},
+    confirm: () => true, prompt: () => { throw new Error('Sender must not request a pairing code.'); },
+    sessionStorage: { getItem: key => stored.get(key) || null, setItem: (key, value) => stored.set(key, value) },
+    addEventListener() {}, removeEventListener() {},
     setTimeout(fn, delay) { const id = ++nextTimer; timers.set(id, { fn, delay }); return id; },
     clearTimeout(id) { timers.delete(id); }
   };
@@ -34,7 +38,7 @@ function harness() {
     return savedDoc ? Response.json(savedDoc) : new Response('', { status: 404 });
   };
   vm.createContext(win);
-  return { win, calls, timers, run: () => vm.runInContext(source, win), fail: () => { sourceFailure = true; } };
+  return { win, calls, timers, logs, stored, run: () => vm.runInContext(source, win), fail: () => { sourceFailure = true; } };
 }
 test('sender isolates credentials, encrypts first snapshot, sends quiet heartbeats and stops', async () => {
   const h = harness(); await h.run();
@@ -63,4 +67,30 @@ test('a failed source read sends no fake fresh-data heartbeat', async () => {
   h.fail(); h.win.__UCB_EYES__.sendNow(); await settle();
   assert.equal(h.calls.filter(c => c.url.endsWith(':commit')).length, writes);
   assert.match(h.win.__UCB_EYES__.status().error, /HTTP 503/); h.win.__UCB_EYES__.stop();
+});
+
+test('sender automatically creates a private link without any pairing prompt', async () => {
+  const h = harness(); await h.run();
+  const url = new URL(h.win.__UCB_EYES__.viewerUrl);
+  const secret = new URLSearchParams(url.hash.slice(1)).get('key');
+  assert.equal(url.origin, 'https://jrdn-r.github.io');
+  assert.equal(url.pathname, '/UCB-eyes/');
+  assert.equal(url.search, '');
+  assert.match(secret, /^[A-Za-z0-9_-]{43}$/);
+  assert.equal(secret, h.stored.get('ucb-eyes-sender-key-v1'));
+  assert.equal(Object.hasOwn(h.win.__UCB_EYES__, 'pairingCode'), false);
+  assert.equal(h.logs.filter(v => v.includes('Private iPhone viewer link')).length, 1);
+  assert.equal(h.logs.some(v => v.startsWith('Pairing code:')), false);
+  h.win.__UCB_EYES__.stop();
+});
+test('sender silently reuses prior session key, regenerates damaged keys', async () => {
+  const old = core.makeCode();
+  const reused = harness(old); await reused.run();
+  assert.equal(new URLSearchParams(new URL(reused.win.__UCB_EYES__.viewerUrl).hash.slice(1)).get('key'), old);
+  reused.win.__UCB_EYES__.stop();
+  const damaged = harness('NOT_A_VALID_KEY'); await damaged.run();
+  const next = damaged.stored.get('ucb-eyes-sender-key-v1');
+  assert.notEqual(next, 'NOT_A_VALID_KEY');
+  assert.match(next, /^[A-Za-z0-9_-]{43}$/);
+  damaged.win.__UCB_EYES__.stop();
 });

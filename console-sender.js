@@ -220,7 +220,7 @@
       code = new URLSearchParams(url.hash.slice(1)).get('key') || '';
     }
     if (!/^[A-Za-z0-9_-]{43}$/.test(code) || unb64(code).length !== 32 || b64(unb64(code)) !== code)
-      throw new Error('Paste the 43-character pairing code or private viewer link from the sender.');
+      throw new Error('Invalid private viewer link. Open the link printed by the UCB Console sender.');
     return code;
   }
   const makeCode = () => b64(crypto.getRandomValues(new Uint8Array(32)));
@@ -283,11 +283,14 @@
     if (!compatible) throw new Error('This UCB build differs from the supplied HAR. Use sourceMode: "dom" or update the verified wire schemas.');
   }
   if (!TOP.confirm('Send this report to UCB Eyes?\n\nOnly the visible report columns are encrypted and sent to the existing ucb-eyes Firebase project. Your UCB login stays on the UCB origin.\n\nStop the old screen-capture sender first. Use this only if this destination and device are approved for the information.')) return;
-  let saved = '';
-  try { saved = sessionStorage.getItem('ucb-eyes-sender-key-v1') || ''; } catch {}
-  const entered = TOP.prompt('UCB Eyes pairing code\nReuse your existing code, or leave blank to create a private viewer link.', saved);
-  if (entered === null) return;
-  const code = entered.trim() ? C.pairingCode(entered) : C.makeCode();
+  // No pairing prompt: silently reuse the tab's existing encryption key,
+  // otherwise generate one for a private viewer link. Do not publish the key.
+  let code = '';
+  try {
+    const saved = sessionStorage.getItem('ucb-eyes-sender-key-v1');
+    if (saved) code = C.pairingCode(saved);
+  } catch { /* Missing or damaged session storage: create a new private link. */ }
+  if (!code) code = C.makeCode();
   const key = await C.importKey(code);
   try { sessionStorage.setItem('ucb-eyes-sender-key-v1', code); } catch {}
   const viewerUrl = config.viewerUrl + '#key=' + code;
@@ -311,7 +314,7 @@
     console.info('[UCB Eyes] Sender stopped. The viewer will keep the last report and mark it stale.');
   }
   TOP.__UCB_EYES__ = {
-    get running() { return running; }, stop, viewerUrl, pairingCode: code,
+    get running() { return running; }, stop, viewerUrl,
     status: () => ({ running, mode: config.sourceMode, intervalMs: interval, rows: lastRows,
       lastSent: lastSent ? new Date(lastSent).toLocaleTimeString() : null, error: lastError }),
     sendNow: () => { if (running && !inFlight) { clearTimeout(timer); void tick(); } }
@@ -460,8 +463,8 @@
     }
   }
   console.info('[UCB Eyes] Ready. Keep this UCB tab open and the computer awake.');
-  console.info('Private iPhone viewer link (keep private):\n' + viewerUrl);
-  console.info('Pairing code:\n' + code);
+  console.info('Private iPhone viewer link (open on an approved device; keep private):\n' + viewerUrl);
+  console.info('No code to enter. Open the private link on your iPhone. It reconnects automatically in this browser session.');
   console.info('Stop: __UCB_EYES__.stop()   Status: __UCB_EYES__.status()');
   if (config.sourceMode === 'dom') console.warn('[UCB Eyes] DOM mode sends only the displayed page. It does not accelerate UCB’s own refresh.');
   await tick();

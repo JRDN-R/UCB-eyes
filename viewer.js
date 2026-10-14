@@ -29,7 +29,7 @@ function state(type, label) {
 function notice(message) { setText('notice', message); $('notice').hidden = !message; }
 function health() {
   if (isDemo) return;
-  if (!code) { state('waiting', 'Not paired'); return; }
+  if (!code) { state('waiting', 'Private link needed'); return; }
   if (!navigator.onLine) { state('error', 'Offline'); notice('You are offline. The last report remains readable.'); return; }
   if (errorMessage) { state('error', 'Not connected'); notice(errorMessage); return; }
   if (feedNotice) { state('waiting', 'Waiting for text'); notice(feedNotice); return; }
@@ -67,7 +67,7 @@ async function firebaseServices() {
 function friendlyError(error) {
   if (String(error?.code).includes('permission-denied')) return 'Firestore denied access. Check the existing UCB Eyes rules and sender permissions.';
   if (String(error?.code).includes('auth/')) return 'Firebase sign-in failed. Check Anonymous Authentication and the project configuration.';
-  if (error?.name === 'OperationError') return 'This pairing code cannot decrypt the feed. Use the code from the active sender.';
+  if (error?.name === 'OperationError') return 'The saved private link cannot unlock this feed. Open the latest link from the UCB Console sender.';
   return error?.message === 'Chunk version mismatch' ? 'A new report is arriving. The last complete report is retained.' :
     'The feed could not be read. Check the sender, pairing code and network connection.';
 }
@@ -151,34 +151,21 @@ async function connect(input) {
   };
   listen();
 }
-function showSettings() { $('pairCode').value = code; $('pairError').textContent = ''; $('settingsDialog').showModal(); }
+function showSettings() { $('settingsDialog').showModal(); }
 $('settingsButton').addEventListener('click', showSettings);
 $('pairButton').addEventListener('click', showSettings);
 $('closeSettings').addEventListener('click', () => $('settingsDialog').close());
-$('pairForm').addEventListener('submit', async event => {
-  event.preventDefault(); $('pairError').textContent = '';
-  try {
-    // Validate synchronously; Firebase initialization may finish after the dialog closes.
-    const input = C.pairingCode($('pairCode').value);
-    $('settingsDialog').close();
-    await connect(input);
-  } catch (error) {
-    errorMessage = error.message || friendlyError(error); health();
-    $('pairError').textContent = errorMessage;
-    if (!$('settingsDialog').open) $('settingsDialog').showModal();
-  }
-});
 $('copyLink').addEventListener('click', async () => {
   try { await navigator.clipboard.writeText(new URL('./', location.href).href.split('#')[0].split('?')[0] + '#key=' + code); globalThis.ucbToast('Private viewer link copied.'); }
-  catch { globalThis.ucbToast('Copy the pairing code from settings instead.'); }
+  catch { globalThis.ucbToast('Copy the private viewer URL from the source Console.'); }
 });
 $('forgetDevice').addEventListener('click', () => {
   ++generation; unsubscribe?.(); unsubscribe = null; refresh = null;
   code = ''; key = null; lastReceived = 0; currentVersion = ''; lastStamp = 0; errorMessage = ''; feedNotice = ''; isDemo = false;
   try { sessionStorage.removeItem('ucb-eyes-viewer-key-v1'); } catch {}
   history.replaceState(null, '', location.pathname);
-  board.clear(); $('pairCode').value = ''; $('copyLink').disabled = true; $('forgetDevice').disabled = true;
-  setText('receivedTime', '—'); notice(''); health(); globalThis.ucbToast('This device is no longer paired.');
+  board.clear(); $('copyLink').disabled = true; $('forgetDevice').disabled = true;
+  setText('receivedTime', '—'); notice(''); health(); globalThis.ucbToast('This device is disconnected.');
 });
 $('copySender').addEventListener('click', async () => {
   try {

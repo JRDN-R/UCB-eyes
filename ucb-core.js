@@ -217,7 +217,7 @@
       code = new URLSearchParams(url.hash.slice(1)).get('key') || '';
     }
     if (!/^[A-Za-z0-9_-]{43}$/.test(code) || unb64(code).length !== 32 || b64(unb64(code)) !== code)
-      throw new Error('Paste the 43-character pairing code or private viewer link from the sender.');
+      throw new Error('Invalid private viewer link. Open the link printed by the UCB Console sender.');
     return code;
   }
   const makeCode = () => b64(crypto.getRandomValues(new Uint8Array(32)));

@@ -14,9 +14,9 @@ in another browser, so this one-time cleanup matters.
 
 1. Stop the old screen-capture publisher. On the source computer, open **JAX → TRAINERS → E&E → Outstanding** in the existing, authenticated UCB session.
 2. Open DevTools → **Console**, choose **top**, and paste the complete contents of **[console-sender.js](console-sender.js)**. The viewer's Settings → **Copy console script** copies the same standalone script. No extension, local server, remote code loader or installation is required for the sender.
-3. Read the destination confirmation. Enter an existing pairing code, or leave the prompt blank to generate one. Open the **private iPhone viewer link** printed in the console on your approved mobile device. Alternatively, open the viewer and paste the pairing code into Settings.
+3. Confirm the destination. The script silently reuses its existing session encryption key or generates one automatically, then prints a **private iPhone viewer link** in the Console. Open that link on your approved device. There are **no passcode or pairing-code prompts** in either the sender or the mobile viewer.
 
-The unpaired public page contains no live report text. The private link contains the decryption key; treat it as a secret and share it only with approved recipients. The viewer removes the key from the address bar after reading it and keeps it in tab-scoped session storage, not persistent local storage. A new tab or expired browser session may require pairing again. Keep the code privately to reuse the same pairing on another day. **Forget this device** clears the active viewer and its saved tab key; it does not revoke other devices. Generate a new sender code to rotate access to future updates.
+The unpaired public page contains no live report text. **The private link is still an access secret**: it contains the decryption key, so share it only with approved recipients. The viewer removes the key from the address bar after reading it and keeps it in tab-scoped session storage, not persistent local storage. Opening the same viewer tab again during its browser session reconnects automatically. The sender silently reuses its key across reloads of the same source tab; closing that source tab or ending browser storage may generate a new private link, and the iPhone must open that new link. **Forget this device** clears the active viewer and its saved tab key but cannot revoke links saved elsewhere. There is no user-entered passcode; there is also no unsecured public fallback. This does not remove organizational approval requirements or replace identity-based access control.
 
 Console controls:
 
@@ -30,6 +30,7 @@ The source tab must remain open, signed in and running on an awake computer. A c
 
 ## What changed
 
+- Private-link connection with **no manual pairing code or passcode**. Encryption and existing source-session permissions remain unchanged.
 - Native portrait-friendly cards, light/dark appearance, iOS safe-area spacing, readable wrapping and ordinary text selection. No forced landscape, screenshot-only text or zoom restrictions.
 - Compact cards show aircraft, work order, trade, a short remarks preview and the certifier / E&E names. Tap **More · full remarks** to expand the entire selectable remarks and additional metadata. Work orders retain their copy button.
 - Cards assigned to **JORDAN RAPP** in the E&E field have a deep-teal background with high-contrast selectable text, regardless of the report status. Remarks and certifier names cannot trigger this highlight.
