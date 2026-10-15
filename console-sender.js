@@ -246,10 +246,38 @@
     decodeGwt, parseReport, reportBody, pairingCode, makeCode, importKey, encrypt, decrypt };
 });
 
+/* Public, read-only feed transport. A private viewer key is intentionally not used. */
+(function (root, factory) {
+  const feed = factory(root.UcbEyesCore || (typeof require === 'function' ? require('./ucb-core.js') : null));
+  if (typeof module === 'object' && module.exports) module.exports = feed;
+  else root.UcbEyesPublic = feed;
+})(globalThis, function (core) {
+  'use strict';
+  const VERSION = 'ucb-public-v1';
+  const MAX_AGE_MS = 30000;
+  const MAX_BYTES = 450000;
+  function encode(value) {
+    const data = JSON.stringify(core.validateSnapshot(value));
+    if (new TextEncoder().encode(data).byteLength > MAX_BYTES)
+      throw new Error('The report exceeds the allowed public snapshot size.');
+    return data;
+  }
+  function decode(data) {
+    if (typeof data !== 'string' || data.length > MAX_BYTES)
+      throw new Error('Invalid public report snapshot.');
+    return core.validateSnapshot(JSON.parse(data));
+  }
+  function fresh(stamp, now = Date.now()) {
+    return Number.isFinite(stamp) && stamp > 0 && stamp <= now + 5000 && now - stamp <= MAX_AGE_MS;
+  }
+  return { VERSION, MAX_AGE_MS, encode, decode, fresh };
+});
+
 /* Bundled by build.cjs. Run console-sender.js, not this source file, in DevTools > top. */
 (async function startUcbEyes() {
   'use strict';
   const C = globalThis.UcbEyesCore;
+  const P = globalThis.UcbEyesPublic;
   const config = {
     intervalMs: 2000, // Supported range: 1000–3000 milliseconds. Never overlaps requests.
     sourceMode: 'rpc', // 'dom' explicitly mirrors only the visible page at UCB's own refresh rate.
@@ -261,7 +289,7 @@
   if (window !== TOP) throw new Error('Select top in the DevTools Console context dropdown, then paste again.');
   if (!window.isSecureContext || !crypto?.subtle) throw new Error('HTTPS and Web Crypto are required.');
   if (!['rpc', 'dom'].includes(config.sourceMode)) throw new Error('Unknown source mode.');
-  if (TOP.__UCB_EYES__?.running) TOP.__UCB_EYES__.stop();
+  if (TOP.__UCB_EYES__?.running) await TOP.__UCB_EYES__.stop();
   function findSource(win, seen = new Set()) {
     if (seen.has(win) || seen.size >= 40) return null;
     seen.add(win);
@@ -282,18 +310,8 @@
     const compatible = [...source.document.scripts].some(s => /5F3D96C6EB4F757767F1A4D73FF240A0\.cache\.js(?:\?|$)/.test(s.src));
     if (!compatible) throw new Error('This UCB build differs from the supplied HAR. Use sourceMode: "dom" or update the verified wire schemas.');
   }
-  if (!TOP.confirm('Send this report to UCB Eyes?\n\nOnly the visible report columns are encrypted and sent to the existing ucb-eyes Firebase project. Your UCB login stays on the UCB origin.\n\nStop the old screen-capture sender first. Use this only if this destination and device are approved for the information.')) return;
-  // No pairing prompt: silently reuse the tab's existing encryption key,
-  // otherwise generate one for a private viewer link. Do not publish the key.
-  let code = '';
-  try {
-    const saved = sessionStorage.getItem('ucb-eyes-sender-key-v1');
-    if (saved) code = C.pairingCode(saved);
-  } catch { /* Missing or damaged session storage: create a new private link. */ }
-  if (!code) code = C.makeCode();
-  const key = await C.importKey(code);
-  try { sessionStorage.setItem('ucb-eyes-sender-key-v1', code); } catch {}
-  const viewerUrl = config.viewerUrl + '#key=' + code;
+  if (!TOP.confirm('Publish this JAX / TRAINERS E&E report for unrestricted read-only viewing?\n\nThe current report fields (including personnel names, work orders, and remarks) will be readable in Firebase by permitted public viewers of '+config.viewerUrl+'. No password, private link, or remote UCB actions are used.\n\nOnly continue if public internet viewing and this destination are approved.')) return;
+  const viewerUrl = config.viewerUrl;
   const interval = Math.min(3000, Math.max(1000, config.intervalMs));
   const sessionId = crypto.randomUUID();
   const root = `projects/${config.projectId}/databases/(default)/documents`;
@@ -303,15 +321,40 @@
   const fetchCloud = TOP.fetch.bind(TOP);
   let running = true, timer, failures = 0, sequence = 0, fingerprint = '', version = '';
   let token = '', refreshToken = '', expiresAt = 0, lease = null, initialized = false;
-  let lastSent = 0, lastError = '', lastRows = 0, inFlight = false;
+  let lastSent = 0, lastError = '', lastRows = 0, inFlight = false, stoppingPromise = null;
   const controllers = new Set();
+  // Best-effort removal on normal stop. Atomic precondition prevents deleting
+  // another publisher's feed. Browser crashes and denied deletes require a
+  // server-side Firestore retention policy; the website independently expires.
+  async function removeSnapshot(oldToken, oldLease) {
+    if (!oldToken || !oldLease) return;
+    try {
+      const response = await fetchCloud(api + root + ':commit', {
+        method: 'POST', credentials: 'omit', mode: 'cors', keepalive: true,
+        cache: 'no-store', redirect: 'error', referrerPolicy: 'no-referrer',
+        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + oldToken },
+        body: JSON.stringify({ writes: [
+          { delete: chunkName },
+          { delete: currentName, currentDocument: { updateTime: oldLease } }
+        ] })
+      });
+      if (!response.ok) throw new Error('HTTP ' + response.status);
+      console.info('[UCB Eyes] Stopped and cleared the public feed.');
+    } catch {
+      console.warn('[UCB Eyes] Snapshot cleanup was not confirmed. The website hides the feed after 30 seconds; Firebase retention must be managed separately.');
+    }
+  }
   function stop() {
+    if (stoppingPromise) return stoppingPromise;
+    if (!running) return Promise.resolve();
+    const oldToken = token, oldLease = lease;
     running = false; clearTimeout(timer);
     for (const controller of controllers) controller.abort();
     controllers.clear();
     token = ''; refreshToken = '';
     TOP.removeEventListener('pagehide', stop);
-    console.info('[UCB Eyes] Sender stopped. The viewer will keep the last report and mark it stale.');
+    console.info('[UCB Eyes] Sender stopped. The public viewer expires within 30 seconds.');
+    return (stoppingPromise = removeSnapshot(oldToken, oldLease));
   }
   TOP.__UCB_EYES__ = {
     get running() { return running; }, stop, viewerUrl,
@@ -400,11 +443,11 @@
     if (!initialized) { const doc = await currentDocument(); lease = doc?.updateTime || null; initialized = true; }
     const nextFingerprint = JSON.stringify(snapshot);
     const changed = nextFingerprint !== fingerprint;
-    const nextVersion = changed ? `${C.VERSION}.${sessionId}.${++sequence}` : version;
+    const nextVersion = changed ? `${P.VERSION}.${sessionId}.${++sequence}` : version;
     const fields = { version: { stringValue: nextVersion }, chunkCount: { integerValue: '1' } };
     const writes = [];
     if (changed) writes.push({ update: { name: chunkName, fields: {
-      version: { stringValue: nextVersion }, data: { stringValue: await C.encrypt(snapshot, key, nextVersion) }
+      version: { stringValue: nextVersion }, data: { stringValue: P.encode(snapshot) }
     } } });
     writes.push({ update: { name: currentName, fields },
       updateTransforms: [{ fieldPath: 'updatedAt', setToServerValue: 'REQUEST_TIME' }],
@@ -451,7 +494,7 @@
     } catch (error) {
       if (!running) return;
       failures++;
-      const message = error.name === 'AbortError' ? 'Request timed out. Retrying; the viewer retains the last good report.' : error.message;
+      const message = error.name === 'AbortError' ? 'Request timed out. Retrying; the viewer expires after 30 seconds without a successful update.' : error.message;
       if (message !== lastError) console.warn('[UCB Eyes] ' + message);
       lastError = message;
       // No fake heartbeat after a failed source read or failed upload.
@@ -463,9 +506,9 @@
     }
   }
   console.info('[UCB Eyes] Ready. Keep this UCB tab open and the computer awake.');
-  console.info('Private iPhone viewer link (open on an approved device; keep private):\n' + viewerUrl);
-  console.info('No code to enter. Open the private link on your iPhone. It reconnects automatically in this browser session.');
-  console.info('Stop: __UCB_EYES__.stop()   Status: __UCB_EYES__.status()');
+  console.info('Public read-only report URL (no passcode or special link):\n' + viewerUrl);
+  console.info('Reports display only while the source sender is refreshing.');
+  console.info('Stop: await __UCB_EYES__.stop()   Status: __UCB_EYES__.status()');
   if (config.sourceMode === 'dom') console.warn('[UCB Eyes] DOM mode sends only the displayed page. It does not accelerate UCB’s own refresh.');
   await tick();
 })().catch(error => console.error('[UCB Eyes] ' + error.message));

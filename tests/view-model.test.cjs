@@ -42,15 +42,16 @@ test('trade matching is case insensitive and does not match partial words', () =
   assert.equal(V.isMetalsPaint(row('7','ELECTRICAL')),false);
 });
 
-test('viewer uses private link and contains no manual passcode input', () => {
+test('public homepage loads without a code and removes expired reports', () => {
   const fs = require('node:fs');
   const path = require('node:path');
   const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
   const viewer = fs.readFileSync(path.join(__dirname, '..', 'viewer.js'), 'utf8');
-  assert.equal(/id="pairCode"|id="pairForm"|type="password"/.test(html), false);
-  for (const id of ['pairForm', 'pairCode', 'pairError'])
-    assert.equal(viewer.includes("$('" + id + "')"), false);
-  assert.ok(viewer.includes("fragment.get('key') || stored"));
-  assert.ok(viewer.includes("sessionStorage.setItem('ucb-eyes-viewer-key-v1', code)"));
-  assert.ok(viewer.includes("history.replaceState(null, '', location.pathname + location.search)"));
+  const sender = fs.readFileSync(path.join(__dirname, '..', 'src/sender.js'), 'utf8');
+  assert.equal(/id="pairCode"|id="pairForm"|type="password"|id="copyLink"/.test(html), false);
+  assert.equal(/sessionStorage|C\.decrypt\(|#key=|C\.pairingCode/.test(viewer), false);
+  assert.equal(/sessionStorage|C\.encrypt\(|#key=|pairingCode/.test(sender), false);
+  assert.ok(viewer.includes("connect().catch("));
+  assert.ok(viewer.includes("P.fresh(stamp)"));
+  assert.ok(viewer.includes("if (board.hasData) board.clear()"));
 });

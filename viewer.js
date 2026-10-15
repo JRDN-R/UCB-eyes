@@ -1,7 +1,9 @@
 import './ucb-core.js';
+import './public-feed.js';
 import './view-model.js?v=compact-3';
 import './board.js?v=compact-3';
 const C = globalThis.UcbEyesCore;
+const P = globalThis.UcbEyesPublic;
 const $ = id => document.getElementById(id);
 const board = new globalThis.UcbEyesBoard();
 const firebaseConfig = {
@@ -11,7 +13,7 @@ const firebaseConfig = {
   appId: '1:460479225138:web:9901e6ae32943663d1cb2b'
 };
 let servicesPromise, unsubscribe, refresh, generation = 0;
-let code = '', key = null, currentVersion = '', lastReceived = 0, sourcePublished = 0;
+let currentVersion = '', lastReceived = 0, sourcePublished = 0;
 let lastStamp = 0, errorMessage = '', mode = 'rpc', isDemo = false, feedNotice = '';
 async function bounded(promise) {
   let timer;
@@ -27,19 +29,25 @@ function state(type, label) {
   setText('connectionText', label);
 }
 function notice(message) { setText('notice', message); $('notice').hidden = !message; }
+function expire(message = 'The source feed stopped or expired. Start the read-only sender to resume.') {
+  if (board.hasData) board.clear();
+  currentVersion = ''; lastReceived = 0; lastStamp = 0; sourcePublished = 0;
+  setText('receivedTime', '—');
+  feedNotice = message;
+  state('waiting', 'No live feed'); notice(message);
+}
 function health() {
   if (isDemo) return;
-  if (!code) { state('waiting', 'Private link needed'); return; }
-  if (!navigator.onLine) { state('error', 'Offline'); notice('You are offline. The last report remains readable.'); return; }
+  if (lastReceived && !P.fresh(sourcePublished)) { expire(); return; }
+  if (!navigator.onLine) { state('error', 'Offline'); notice('You are offline.'); return; }
   if (errorMessage) { state('error', 'Not connected'); notice(errorMessage); return; }
-  if (feedNotice) { state('waiting', 'Waiting for text'); notice(feedNotice); return; }
+  if (feedNotice) { state('waiting', 'No live feed'); notice(feedNotice); return; }
   if (!lastReceived) { state('waiting', 'Waiting for sender'); return; }
-  const age = Math.max(Date.now() - lastReceived, sourcePublished ? Date.now() - sourcePublished : 0);
-  if (age > 15000) { state('stale', 'Paused'); notice('No recent source update. Showing the last received report.'); }
-  else if (age > 6500) { state('delayed', 'Delayed'); notice('The next source update has not arrived yet.'); }
+  const age = Math.max(Date.now() - lastReceived, Date.now() - sourcePublished);
+  if (age > 6500) { state('delayed', 'Delayed'); notice('The next source update has not arrived yet.'); }
   else {
     state('live', mode === 'dom' ? 'Page mirror' : 'Live');
-    notice(mode === 'dom' ? 'Visible-page mirror. UCB’s own refresh controls source freshness; other pages are not included.' : '');
+    notice(mode === 'dom' ? 'Visible-page mirror only; other report pages are not included.' : '');
   }
 }
 function received(meta, receiptTime) {
@@ -67,19 +75,15 @@ async function firebaseServices() {
 function friendlyError(error) {
   if (String(error?.code).includes('permission-denied')) return 'Firestore denied access. Check the existing UCB Eyes rules and sender permissions.';
   if (String(error?.code).includes('auth/')) return 'Firebase sign-in failed. Check Anonymous Authentication and the project configuration.';
-  if (error?.name === 'OperationError') return 'The saved private link cannot unlock this feed. Open the latest link from the UCB Console sender.';
   return error?.message === 'Chunk version mismatch' ? 'A new report is arriving. The last complete report is retained.' :
-    'The feed could not be read. Check the sender, pairing code and network connection.';
+    'The public report could not be read. Check the sender, Firestore permissions and network.';
 }
-async function connect(input) {
-  const newCode = C.pairingCode(input), newKey = await C.importKey(newCode);
+async function connect() {
   const myGeneration = ++generation;
   unsubscribe?.(); refresh = null;
-  code = newCode; key = newKey; isDemo = false;
+  isDemo = false;
   currentVersion = ''; lastReceived = 0; sourcePublished = 0; lastStamp = 0; errorMessage = ''; feedNotice = '';
   board.clear(); setText('receivedTime', '—'); notice(''); health();
-  try { sessionStorage.setItem('ucb-eyes-viewer-key-v1', code); } catch {}
-  $('copyLink').disabled = false; $('forgetDevice').disabled = false;
   const { fs, db } = await firebaseServices();
   if (myGeneration !== generation) return;
   const currentRef = fs.doc(db, 'live_capture', 'current');
@@ -104,12 +108,13 @@ async function connect(input) {
             }
             if (latest && latest.version !== job.version) continue;
             if (chunk?.version !== job.version) throw new Error('Chunk version mismatch');
-            const value = await C.decrypt(chunk.data, newKey, job.version);
+            if (!P.fresh(job.stamp)) { expire(); return; }
+            const value = P.decode(chunk.data);
             if (myGeneration !== generation) return;
             if (latest && latest.version !== job.version) continue;
             mode = value.mode; board.set(value); currentVersion = job.version;
           }
-          if (myGeneration === generation) received(job, job.receiptTime);
+          if (myGeneration === generation && P.fresh(job.stamp)) received(job, job.receiptTime);
         } catch (error) {
           if (myGeneration === generation) { errorMessage = friendlyError(error); health(); }
         }
@@ -119,17 +124,18 @@ async function connect(input) {
   function accept(snap) {
     if (myGeneration !== generation) return;
     if (snap.metadata.fromCache || snap.metadata.hasPendingWrites) return; // Not a newly received server update.
-    if (!snap.exists()) { feedNotice = 'The text sender has not published a report yet.'; latest = null; health(); return; }
+    if (!snap.exists()) { expire('No active public report. Start the sender in UCB.'); latest = null; return; }
     const data = snap.data();
-    if (typeof data.version !== 'string' || !data.version.startsWith(C.VERSION + '.')) {
-      feedNotice = 'The original screen feed is active. Start the text sender, or open the original screen viewer in settings.';
-      latest = null; health(); return;
+    if (typeof data.version !== 'string' || !data.version.startsWith(P.VERSION + '.')) {
+      expire('The previous private-link sender is still active. Start the updated public read-only sender.');
+      latest = null; return;
     }
     feedNotice = '';
     const stamp = data.updatedAt?.toMillis?.();
     if (data.chunkCount !== 1 || !Number.isFinite(stamp)) {
       errorMessage = 'The sender metadata is incomplete. The last complete report is retained.'; health(); return;
     }
+    if (!P.fresh(stamp)) { expire(); latest = null; return; }
     latest = { version: data.version, stamp, receiptTime: Date.now() };
     void drain();
   }
@@ -155,18 +161,6 @@ function showSettings() { $('settingsDialog').showModal(); }
 $('settingsButton').addEventListener('click', showSettings);
 $('pairButton').addEventListener('click', showSettings);
 $('closeSettings').addEventListener('click', () => $('settingsDialog').close());
-$('copyLink').addEventListener('click', async () => {
-  try { await navigator.clipboard.writeText(new URL('./', location.href).href.split('#')[0].split('?')[0] + '#key=' + code); globalThis.ucbToast('Private viewer link copied.'); }
-  catch { globalThis.ucbToast('Copy the private viewer URL from the source Console.'); }
-});
-$('forgetDevice').addEventListener('click', () => {
-  ++generation; unsubscribe?.(); unsubscribe = null; refresh = null;
-  code = ''; key = null; lastReceived = 0; currentVersion = ''; lastStamp = 0; errorMessage = ''; feedNotice = ''; isDemo = false;
-  try { sessionStorage.removeItem('ucb-eyes-viewer-key-v1'); } catch {}
-  history.replaceState(null, '', location.pathname);
-  board.clear(); $('copyLink').disabled = true; $('forgetDevice').disabled = true;
-  setText('receivedTime', '—'); notice(''); health(); globalThis.ucbToast('This device is disconnected.');
-});
 $('copySender').addEventListener('click', async () => {
   try {
     const response = await fetch('./console-sender.js', { cache: 'no-store' });
@@ -194,9 +188,8 @@ if (params.get('demo') === '1') {
   ], 'rpc'));
   state('waiting', 'Design preview'); notice('Example data only. This preview is not connected to UCB or Firebase.');
 } else {
-  const fragment = new URLSearchParams(location.hash.slice(1));
-  let stored = ''; try { stored = sessionStorage.getItem('ucb-eyes-viewer-key-v1') || ''; } catch {}
-  const initial = fragment.get('key') || stored;
-  if (fragment.has('key')) history.replaceState(null, '', location.pathname + location.search);
-  if (initial) connect(initial).catch(error => { errorMessage = friendlyError(error); health(); });
+  // Legacy private-link fragments no longer unlock the report.
+  if (new URLSearchParams(location.hash.slice(1)).has('key'))
+    history.replaceState(null, '', location.pathname + location.search);
+  connect().catch(error => { errorMessage = friendlyError(error); health(); });
 }
